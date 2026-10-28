@@ -1,0 +1,37 @@
+name: pico
+description: "Pico — your companion, across your devices."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  heroicons: ^0.11.0
+  http: ^1.6.0
+  kin_ui: ^1.7.1
+  shared_preferences: ^2.5.6
+  share_plus: ^13.3.1
+  speech_to_text: ^7.5.0
+  supabase_flutter: ^2.18.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/branding/
+    - assets/fonts/OFL.txt
+    - assets/characters/mica/
+    - assets/characters/tuck/
+    - assets/characters/manifest.json
+  fonts:
+    - family: DM Sans
+      fonts:
+        - asset: assets/fonts/DMSans.ttf

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ffffff">
+    <title>Pico · Set up your companion</title>
+    <meta name="description"
+        content="Connect Pico on your phone and computer. Save what you were about to do, and return to it later.">
+    <link rel="icon" href="assets/branding/pico-mark.svg">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="shell"><a class="brand" href="#top" aria-label="Pico home"><img src="assets/branding/pico-mark.svg"
+                alt="" width="26" height="26">Pico</a>
+        <nav aria-label="Main navigation"><a href="#setup">Setup</a><a href="/download/Pico-source.zip">Source</a></nav>
+    </header>
+    <main class="shell" id="top">
+        <section class="intro" aria-labelledby="intro-title">
+            <div class="intro-copy">
+                <h1 id="intro-title">Pick up where<br>you left off.</h1>
+                <p>Save what you were about to do.<br>Pico keeps it ready on your computer.</p><a class="button primary"
+                    href="#setup">Set up Pico <span aria-hidden="true">↓</span></a>
+            </div><img class="hero-logo" src="assets/branding/pico-mark.svg" width="200" height="200" alt="Pico logo">
+        </section>
+        <section class="setup" id="setup" aria-labelledby="setup-title">
+            <h2 id="setup-title">Set up Pico</h2>
+            <div class="steps">
+                <article class="step phone-step">
+                    <div class="step-copy"><h3>On your phone</h3></div>
+                    <div class="phone-options">
+                        <div class="phone-option">
+                            <h4>Android</h4>
+                            <p>Download and open the APK to install Pico.</p>
+                            <a class="button secondary" href="/download/Pico-Android.apk" download>Android · .apk <span aria-hidden="true">↓</span></a>
+                            <p class="install-note">If asked, allow installs from your browser.</p>
+                        </div>
+                        <div class="phone-option">
+                            <h4>iPhone</h4>
+                            <p>Open Pico in Safari, then add it to your Home Screen.</p>
+                            <a class="button secondary" href="/phone/">Open Pico <span aria-hidden="true">↗</span></a>
+                            <details class="iphone-instructions">
+                                <summary>iPhone instructions <span aria-hidden="true">+</span></summary>
+                                <ol>
+                                    <li>Open Pico in Safari and tap Share.</li>
+                                    <li>Choose Add to Home Screen. Enable Open as Web App if shown, then tap Add.</li>
+                                    <li>Open Pico from its Home Screen icon and sign up.</li>
+                                </ol>
+                            </details>
+                        </div>
+                    </div>
+                </article>
+                <article class="step">
+                    <div class="step-copy">
+                        <h3>On your computer</h3>
+                        <p>macOS 13+ on Apple silicon, or Windows x64.</p>
+                    </div>
+                    <div class="platforms"><a class="button secondary" href="/download/Pico-macOS.dmg">macOS · .dmg
+                            <span aria-hidden="true">↓</span></a><a class="button secondary"
+                            href="/download/Pico-Setup.exe">Windows · .exe <span aria-hidden="true">↓</span></a></div>
+                </article>
+                <article class="step">
+                    <div class="step-copy">
+                        <h3>Connect them</h3>
+                        <p>Sign up on your phone, get a six-digit code, then enter it in Pico on your computer.</p>
+                    </div><span class="step-note">One code. One computer.</span>
+                </article>
+            </div>
+            <details class="install">
+                <summary>Installing Pico <span aria-hidden="true">+</span></summary>
+                <div class="install-content">
+                    <p>On macOS, open the disk image and drag Pico into Applications. On Windows, run Pico-Setup.exe to
+                        install for your account.</p>
+                    <p>In Pico, enter the six-digit connection code from your phone.</p>
+                </div>
+            </details>
+        </section>
+        <footer><a class="brand" href="#top">Pico</a>
+            <p>Phone + computer</p><a href="/download/Pico-source.zip">Download source <span
+                    aria-hidden="true">↗</span></a>
+        </footer>
+        <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="site.js"></script>
+</body>
+
+</html>

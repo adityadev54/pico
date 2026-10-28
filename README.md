@@ -1,42 +1,35 @@
 # Pico
-A companion that lets you request tasks on your computer from your mobile device, follow progress, and receive verified results.
 
-Built for the Meta Global AI Developer Hackathon.
+Hold a thought. Pick it up on your computer.
 
-## The idea
+[Get Pico](https://pico-companion.fly.dev/setup)
 
-Sometimes you need something from your computer when you only have your phone. Pico aims to bridge that gap through an agent that understands your request, uses computer tools, and checks whether the task succeeded.
+| Device | Install |
+| --- | --- |
+| Mac | `.dmg` · Apple silicon, macOS 13+ |
+| Windows | `.exe` · x64 |
+| Android | `.apk` · Android 7+ |
+| iPhone | Safari → Share → Add to Home Screen |
 
-## Hackathon goal
-
-Build one reliable workflow from request to verified result.
-
-Our propsed first workflow:
- - Request a document using a natural-language description.
- - Search permitted folders on the connected computer.
- - Ask for clarification when multiple files match.
- - Return the selected document to the mobile device.
- - Verify delivery before reporting success.
-
-## How it will work
-
-Phone request > agent interpretation > tool execution > verification > result
-
-## Current status
-Early development. We are defining the workflow, tool interfaces, and verification approach. Meta model integration and the new agent loop are planned hackathon work.
-
-## Planned hackathon contributions
-
-- Meta model integration.
-- Agent planning and tool orchestration.
-- Result verification.
-- Failure handling and clarification.
-- An integrated demo of the selected workflow.
+Sign up on your phone, get a connection code, and enter it on your computer.
 
 ## Development
 
-Setup instructions will be added as we establish the development environment.
+Flutter · Supabase (Auth & Devices) · native desktop helpers.
 
-## Be careful
+`agents/` contains desktop helpers, not the AI agent backend. The team’s backend lives in `server/agent/`.
 
-Do not commit API Keys, access tokens, or any local environment files.
+```sh
+flutter pub get
+sh scripts/run_phone.sh
+flutter analyze
+flutter test
+```
+
+For a local relay, set server-only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then run `sh scripts/run_relay.sh`. An environment file can be supplied with `PICO_ENV_FILE`. Keep secrets out of apps and downloads.
+
+## Current status
+
+Pairing, chat history and companion sync are implemented. Head Start needs a configured model provider.
+
+Mac and Windows installers are development builds without publisher verification. Physical Android/iPhone and Windows testing remain.

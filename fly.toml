@@ -1,0 +1,26 @@
+app = "pico-companion"
+primary_region = "ewr"
+[build]
+  dockerfile = "relay/Dockerfile"
+[env]
+  PORT = "8080"
+  PUBLIC_URL = "https://pico-companion.fly.dev"
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "10s"
+  grace_period = "15s"
+  method = "GET"
+  path = "/health"
+[mounts]
+  source = "pico_state"
+  destination = "/data"
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

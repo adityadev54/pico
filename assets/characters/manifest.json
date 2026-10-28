@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "generator": "Built-in ImageGen pose artwork; sharp GIF packaging",
+  "profiles": [
+    {
+      "id": "mica",
+      "source": "assets/characters/source/mica-moods.png",
+      "frameSize": 384,
+      "moods": [
+        {
+          "mood": "idle",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1580,
+          "bytes": 149187
+        },
+        {
+          "mood": "listening",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1000,
+          "bytes": 156501
+        },
+        {
+          "mood": "thinking",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1200,
+          "bytes": 151082
+        },
+        {
+          "mood": "working",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 720,
+          "bytes": 155709
+        },
+        {
+          "mood": "needsYou",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1300,
+          "bytes": 158120
+        },
+        {
+          "mood": "done",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1120,
+          "bytes": 160793
+        },
+        {
+          "mood": "stuck",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1320,
+          "bytes": 157520
+        }
+      ],
+      "aliases": {
+        "talking": "needsYou"
+      }
+    },
+    {
+      "id": "tuck",
+      "source": "assets/characters/source/tuck-moods.png",
+      "frameSize": 384,
+      "moods": [
+        {
+          "mood": "idle",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1580,
+          "bytes": 170185
+        },
+        {
+          "mood": "listening",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1000,
+          "bytes": 175455
+        },
+        {
+          "mood": "thinking",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1200,
+          "bytes": 171980
+        },
+        {
+          "mood": "working",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 720,
+          "bytes": 160110
+        },
+        {
+          "mood": "needsYou",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1300,
+          "bytes": 173987
+        },
+        {
+          "mood": "done",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1120,
+          "bytes": 170066
+        },
+        {
+          "mood": "stuck",
+          "frames": 4,
+          "width": 384,
+          "height": 384,
+          "durationMs": 1320,
+          "bytes": 172839
+        }
+      ],
+      "aliases": {
+        "talking": "needsYou"
+      }
+    }
+  ]
+}

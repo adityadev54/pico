@@ -1,0 +1,60 @@
+{
+  "contract_version": 1,
+  "examples": [
+    {
+      "type": "request",
+      "contract_version": 1,
+      "task_id": "task-example",
+      "device_id": "device-example",
+      "text": "Find my project brief"
+    },
+    {
+      "type": "tool_call",
+      "contract_version": 1,
+      "task_id": "task-example",
+      "step_id": "step-search",
+      "call_id": "call-search",
+      "tool": "search_documents",
+      "arguments": {
+        "query": "project brief"
+      },
+      "idempotency_key": "task-example:step-search",
+      "deadline_seconds": 30
+    },
+    {
+      "type": "tool_result",
+      "contract_version": 1,
+      "task_id": "task-example",
+      "step_id": "step-search",
+      "call_id": "call-search",
+      "status": "succeeded",
+      "data": {
+        "candidates": [
+          {
+            "candidate_id": "candidate-example",
+            "name": "project-brief.txt",
+            "size_bytes": 12
+          }
+        ]
+      },
+      "evidence": {
+        "grant_id": "grant-example"
+      }
+    },
+    {
+      "type": "progress",
+      "contract_version": 1,
+      "task_id": "task-example",
+      "state": "needs_approval",
+      "message": "Select and approve a file to transfer."
+    },
+    {
+      "type": "verification_result",
+      "contract_version": 1,
+      "task_id": "task-example",
+      "step_id": "step-transfer",
+      "status": "pending",
+      "reason": "awaiting_authenticated_phone_receipt"
+    }
+  ]
+}
