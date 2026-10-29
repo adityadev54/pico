@@ -49,6 +49,7 @@ extension PicoConnectionStore on PicoStore {
           .toList();
       await syncCompanion();
       await _deliverPlaces();
+      await refreshTasks();
       final ids = places
           .map((p) => p.mailId)
           .whereType<String>()
@@ -72,6 +73,7 @@ extension PicoConnectionStore on PicoStore {
       if (userId != owner) return;
       final incoming = await relay.request('/phone/mail', token: token);
       if (userId != owner) return;
+      var tasksChanged = false;
       for (final raw in incoming['mail'] as List) {
         final message = Map<String, dynamic>.from(raw);
         final data = Map<String, dynamic>.from(message['payload']);
@@ -95,6 +97,9 @@ extension PicoConnectionStore on PicoStore {
             );
           }
         }
+        if (message['kind'] == 'tool_result') {
+          tasksChanged = true;
+        }
         await relay.request(
           '/phone/ack',
           token: _token,
@@ -104,6 +109,7 @@ extension PicoConnectionStore on PicoStore {
           },
         );
       }
+      if (tasksChanged) await refreshTasks();
       await _persist();
     } catch (_) {
       // Preserve the last real heartbeat. It ages into Offline, never Connected.

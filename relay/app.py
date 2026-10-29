@@ -1,9 +1,11 @@
 """Run with python3 -m relay.app --env-file /path/to/server.env."""
 import argparse
 import json
+import logging
 import shutil
 import mimetypes
 import os
+import time
 import urllib.error
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,12 +14,20 @@ from .service import ApiError, PicoService, Supabase, identifier, stamp
 from .state import RelayState
 
 ROOT = Path(__file__).resolve().parents[1]
+log = logging.getLogger('pico.relay')
+
+
+def access_line(method, raw_path, status, ms):
+    """One access-log line. Path only, no query: codes, tokens, queries and
+    user text never enter request logs."""
+    path = urllib.parse.urlsplit(raw_path or '/').path or '/'
+    return f'{method} {path} {status} {ms}ms'
 
 
 def make_handler(service):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
-            pass  # Codes, tokens, queries and user text never enter request logs.
+            pass  # BaseHTTPRequestHandler's own logging stays off; access_line logs instead.
 
         def headers_for(self, type='application/json'):
             self.send_header('Content-Type', type)
@@ -28,6 +38,7 @@ def make_handler(service):
             self.send_header('X-Content-Type-Options', 'nosniff')
 
         def send(self, status, body):
+            self._status = status
             raw = json.dumps(body).encode()
             self.send_response(status)
             self.headers_for()
@@ -47,6 +58,8 @@ def make_handler(service):
             self.handle_request('POST')
 
         def handle_request(self, method):
+            start = time.monotonic()
+            self._status = 500
             try:
                 path = urllib.parse.urlsplit(self.path).path
                 query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -54,15 +67,31 @@ def make_handler(service):
                 body = {}
                 if method == 'POST':
                     length = int(self.headers.get('Content-Length', 0))
-                    if length < 0 or length > 16000:
+                    limit = 2_000_000 if urllib.parse.urlsplit(self.path).path in ('/agent/transfer', '/uploads') else 16000
+                    if length < 0 or length > limit:
                         raise ApiError(413, 'Pico accepts short text messages only.')
                     body = json.loads(self.rfile.read(length) or b'{}')
                     if not isinstance(body, dict):
                         raise ApiError(400, 'Expected a message object.')
                 if method == 'GET' and path == '/health':
-                    # This checks real DB reachability, without reading user content.
-                    service.db.db('devices', {'select': 'id', 'limit': '0'})
-                    return self.send(200, {'status': 'ok', 'product': 'pico', 'supabase_connected': True, 'snapshots_on_server': False})
+                    # Real reachability per dependency, without reading user content.
+                    checks = {'supabase': False, 'state': False}
+                    try:
+                        service.db.db('devices', {'select': 'id', 'limit': '0'})
+                        checks['supabase'] = True
+                    except Exception:
+                        pass
+                    try:
+                        service.state.ping()
+                        checks['state'] = True
+                    except Exception:
+                        pass
+                    ok = all(checks.values())
+                    return self.send(200 if ok else 503, {
+                        'status': 'ok' if ok else 'degraded', 'product': 'pico',
+                        'supabase_connected': checks['supabase'],
+                        'state_writable': checks['state'],
+                        'snapshots_on_server': False})
                 if method == 'POST' and path == '/claim':
                     return self.send(200, service.claim(body, self.headers.get('Fly-Client-IP', self.client_address[0]) if os.environ.get('FLY_APP_NAME') else self.client_address[0]))
                 if path.startswith('/agent/'):
@@ -74,12 +103,21 @@ def make_handler(service):
                     if path == '/agent/ack' and method == 'POST':
                         return self.send(200, service.acknowledge(owner, id, body.get('ids', [])))
                     if path == '/agent/mail' and method == 'POST':
-                        if body.get('kind') not in ('idle', 'head_start', 'parked'):
+                        if body.get('kind') not in ('idle', 'head_start', 'parked', 'tool_result'):
                             raise ApiError(400, 'Unsupported computer message.')
+                        if body.get('kind') == 'tool_result':
+                            service.complete_tool_result(owner, id, body.get('payload', {}))
                         return self.send(200, service.enqueue(owner, id, body['kind'], body.get('payload', {}), body.get('id'), phone=True))
                     if path == '/agent/revoke' and method == 'POST':
                         return self.send(200, service.revoke(owner, id))
-                if path in ('/devices', '/pairing', '/mail', '/receipts', '/unpair', '/phone/mail', '/phone/ack'):
+                    if path == '/agent/artifact' and method == 'POST':
+                        return self.send(200, service.artifact_for_helper(
+                            owner, id, body.get('id')))
+                    if path == '/agent/transfer' and method == 'POST':
+                        return self.send(200, service.upload_transfer(owner, id, body))
+                if path in ('/devices', '/pairing', '/mail', '/receipts', '/unpair', '/phone/mail', '/phone/ack',
+                            '/tasks', '/tasks/cancel', '/tasks/steer', '/tasks/receipt', '/files/delete', '/history/clear',
+                            '/uploads'):
                     owner = service.user(token)
                     if path == '/devices' and method == 'GET':
                         return self.send(200, {'devices': service.devices(owner)})
@@ -105,6 +143,26 @@ def make_handler(service):
                         id = identifier(body.get('device_id'))
                         service.owned(owner, id)
                         return self.send(200, service.acknowledge(owner, id, body.get('ids', []), phone=True))
+                    if path == '/tasks' and method == 'POST':
+                        return self.send(200, service.create_task(
+                            owner, body.get('device_id'), body.get('session_id'),
+                            body.get('kind'), body.get('input', {})))
+                    if path == '/tasks/cancel' and method == 'POST':
+                        return self.send(200, service.cancel_task(owner, body.get('id')))
+                    if path == '/tasks/steer' and method == 'POST':
+                        return self.send(200, service.steer_task(
+                            owner, body.get('id'), body.get('name')))
+                    if path == '/tasks/receipt' and method == 'POST':
+                        return self.send(200, service.submit_receipt(owner, body))
+                    if path == '/files/delete' and method == 'POST':
+                        return self.send(200, service.delete_transfer(owner, body.get('id')))
+                    if path == '/history/clear' and method == 'POST':
+                        return self.send(200, service.clear_history(owner))
+                    if path == '/uploads' and method == 'POST':
+                        return self.send(200, service.upload_artifact(
+                            owner, body.get('device_id'), body.get('session_id'),
+                            body.get('name'), body.get('content_base64'),
+                            body.get('purpose')))
                 if method == 'GET' and self.static(path):
                     return
                 self.send(404, {'error': 'Not found'})
@@ -115,7 +173,11 @@ def make_handler(service):
             except (urllib.error.URLError, TimeoutError, OSError):
                 self.send(503, {'error': 'Connection unavailable. Your work stays saved locally.'})
             except Exception:
+                log.exception('request failed')
                 self.send(500, {'error': 'Pico could not complete this request.'})
+            finally:
+                ms = int((time.monotonic() - start) * 1000)
+                log.info(access_line(method, self.path, self._status, ms))
 
         def static(self, path):
             if path in ('/', '/setup'):
@@ -130,7 +192,7 @@ def make_handler(service):
                     file = base/'index.html'
             elif path.startswith('/download/'):
                 filename = path.removeprefix('/download/')
-                if filename not in ('Pico-macOS.zip','Pico-Windows.zip','Pico-source.zip','Pico-macOS.dmg','Pico-Setup.exe','Pico-Android.apk','SHA256SUMS'):
+                if filename not in ('Pico-source.zip','Pico-macOS.dmg','Pico-Setup.exe','Pico-Android.apk','SHA256SUMS'):
                     return False
                 file = ROOT/'downloads'/filename
             elif path.startswith('/characters/'):
@@ -145,6 +207,7 @@ def make_handler(service):
                     return False
             if not file.is_file():
                 return False
+            self._status = 200
             self.send_response(200)
             self.headers_for('application/vnd.android.package-archive' if file.suffix == '.apk' else mimetypes.guess_type(file.name)[0] or 'application/octet-stream')
             self.send_header('Content-Length', str(file.stat().st_size))
@@ -170,6 +233,7 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--state', default=str(ROOT/'.local/relay.sqlite'))
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
     load_env(args.env_file)
     url, key = os.environ.get('SUPABASE_URL'), os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
     if not url or not key:

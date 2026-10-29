@@ -28,15 +28,32 @@ Future<bool> dispatchComputerAction(
     }
     return true;
   }
+  if (command.kind == 'steer_output') {
+    final notes = store.tasks.where(
+      (task) => task['kind'] == 'create_note' && task['status'] == 'queued',
+    );
+    if (notes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('nothing to rename right now — create a note first.'),
+        ),
+      );
+    } else {
+      await store.steerTask(notes.first['id'], command.input['path']);
+    }
+    return true;
+  }
   final device = await chooseComputer(context, store, hint: command.deviceHint);
   if (device == null || !context.mounted) return true;
   final helper = store.devices.firstWhere((item) => item['id'] == device);
+  final helperVersion = helper['helper_version'] as String?;
   if (['open_app', 'manage_permissions'].contains(command.kind) &&
-      helper['helper_version'] != '0.3.0') {
+      helperVersion != null &&
+      !['0.2.0', '0.3.0'].contains(helperVersion)) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'update the computer helper from pico-relay.fly.dev/setup first.',
+          'update the computer helper from the setup page first.',
         ),
       ),
     );

@@ -10,6 +10,7 @@ import 'chat_bubble_shape.dart';
 import 'message_frame.dart';
 import 'agent_message.dart';
 import 'place_empty_state.dart';
+import 'task_bubble.dart';
 
 class ConversationView extends StatelessWidget {
   const ConversationView({
@@ -27,7 +28,8 @@ class ConversationView extends StatelessWidget {
   final VoidCallback? onVoice;
   final bool typing;
   @override
-  Widget build(BuildContext context) => store.places.isEmpty
+  Widget build(BuildContext context) =>
+      store.places.isEmpty && store.tasks.isEmpty
       ? SafeArea(
           bottom: false,
           child: Padding(
@@ -87,6 +89,12 @@ class ConversationView extends StatelessWidget {
                       onTap: onDevices,
                     ),
                   const SizedBox(height: 12),
+                  for (final task in store.tasks.take(5))
+                    TaskBubble(
+                      key: ValueKey(task['id']),
+                      task: task,
+                      store: store,
+                    ),
                   for (final place in store.places.reversed.where(
                     (p) => store.selectedPlaceId == null
                         ? !p.finished
@@ -98,7 +106,8 @@ class ConversationView extends StatelessWidget {
                       store: store,
                     ),
                   if (store.places.isNotEmpty &&
-                      store.places.every((p) => p.finished))
+                      store.places.every((p) => p.finished) &&
+                      store.tasks.isEmpty)
                     const AgentMessage(text: 'All caught up.'),
                 ],
               ),

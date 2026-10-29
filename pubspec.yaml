@@ -1,7 +1,7 @@
 name: pico
 description: "Pico — your companion, across your devices."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.13.5
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  crypto: ^3.0.6
   heroicons: ^0.11.0
   http: ^1.6.0
   kin_ui: ^1.7.1
@@ -16,11 +17,14 @@ dependencies:
   share_plus: ^13.3.1
   speech_to_text: ^7.5.0
   supabase_flutter: ^2.18.3
+  file_picker: ^13.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  cross_file: ^0.3.5+5
+  file_picker_platform_interface: ^4.2.0
 
 flutter:
   uses-material-design: true

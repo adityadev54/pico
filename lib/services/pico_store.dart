@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import '../models/place.dart';
 import '../models/activity.dart';
 import '../models/session.dart';
+import 'computer_tasks.dart';
 import 'relay_client.dart';
 
 part 'pico_chat_store.dart';
@@ -147,9 +149,17 @@ class PicoStore extends ChangeNotifier {
   }
 
   Future<void> send(String text, {String? sourceText}) => savePlace(text);
+
   Future<void> summarizeDocument(String text) async {
-    error = 'General document tasks are outside Pico’s resume flow.';
-    notifyListeners();
+    // Extractive fallback until a model provider is configured (see Head Start).
+    final excerpt = text.trim();
+    if (excerpt.isEmpty) {
+      error = 'Nothing to summarize yet.';
+      notifyListeners();
+      return;
+    }
+    await recordActivity('Document excerpt saved', excerpt.characters.take(120).toString(), 'summary');
+    await savePlace('Summary: ${excerpt.characters.take(300)}');
   }
 
   Future<void> requestTask(
@@ -158,12 +168,132 @@ class PicoStore extends ChangeNotifier {
     Map<String, dynamic> input, {
     String? utterance,
   }) async {
-    error = 'Use Hold My Place to prepare your return.';
+    if (client == null) {
+      error = 'Sign in on your phone first.';
+      notifyListeners();
+      return;
+    }
+    setMood('working');
+    try {
+      final task = await ComputerTasks(client!).create(
+        device: device,
+        session: current?.id ?? '',
+        kind: kind,
+        input: input,
+      );
+      tasks.insert(0, Map<String, dynamic>.from(task));
+      error = null;
+      await recordActivity(
+        'Request sent',
+        utterance ?? kind,
+        'task:${task['id']}',
+      );
+    } catch (e) {
+      error = e.toString().replaceFirst('Exception: ', '');
+      forgetDeadDevice(device, error);
+    } finally {
+      if (mood == 'working') setMood('idle');
+      notifyListeners();
+    }
+  }
+
+  /// Drops a computer the relay no longer recognizes (unpaired,
+  /// revoked, or a different backend) and re-checks, so the next send
+  /// doesn't fail the same way. Returns true when it dropped.
+  bool forgetDeadDevice(String device, String? message) {
+    if (message == null || !message.contains('Computer not found')) {
+      return false;
+    }
+    devices.removeWhere((d) => d['id'] == device);
+    unawaited(refreshDevices());
+    return true;
+  }
+
+  void clearError() {
+    if (error == null) return;
+    error = null;
+    notifyListeners();
+  }
+
+  Future<void> approveTransfer({
+    required String device,
+    required Map<String, dynamic> searchTask,
+    required Map<String, dynamic> candidate,
+  }) async {
+    // Exact-file approval: binds this candidate to a new transfer task.
+    await requestTask(device, 'send_file', {
+      'candidate_id': candidate['candidate_id'],
+      'approval_id': _uuid(),
+    }, utterance: 'Send ${candidate['name']} to phone');
+  }
+
+  Future<void> refreshTasks() async {
+    if (client == null) return;
+    try {
+      final rows = await ComputerTasks(client!).list();
+      tasks
+        ..clear()
+        ..addAll(rows);
+      notifyListeners();
+    } catch (_) {
+      // Keep last tasks through a network outage.
+    }
+  }
+
+  Future<void> submitReceipt({
+    required String task,
+    required int size,
+    required String digest,
+  }) async {
+    if (client == null) return;
+    await ComputerTasks(client!).receipt(task: task, size: size, digest: digest);
+    await refreshTasks();
+  }
+
+  Future<Map<String, dynamic>?> uploadFile(
+    String device,
+    String name,
+    Uint8List bytes,
+  ) async {
+    if (client == null) return null;
+    try {
+      final receipt = await ComputerTasks(
+        client!,
+      ).upload(device: device, name: name, bytes: bytes);
+      await refreshTasks();
+      error = null;
+      notifyListeners();
+      return receipt;
+    } catch (e) {
+      error = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<void> steerTask(String id, String name) async {
+    if (client == null) return;
+    try {
+      await ComputerTasks(client!).steer(id, name);
+      await refreshTasks();
+      error = null;
+    } catch (e) {
+      error = e.toString().replaceFirst('Exception: ', '');
+    }
     notifyListeners();
   }
 
   Future<void> cancelTask(String id) async {
-    throw UnsupportedError('No general-purpose computer tasks in Pico.');
+    if (client == null) return;
+    try {
+      await ComputerTasks(client!).cancel(id);
+      final i = tasks.indexWhere((t) => t['id'] == id);
+      if (i >= 0) tasks[i] = {...tasks[i], 'status': 'cancelled'};
+      error = null;
+    } catch (e) {
+      error = e.toString().replaceFirst('Exception: ', '');
+    }
+    notifyListeners();
   }
 
   Future<void> react(Session session, int index, String reaction) async {

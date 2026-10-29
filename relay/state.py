@@ -16,6 +16,13 @@ class RelayState:
     def connect(self):
         return sqlite3.connect(self.path, timeout=10)
 
+    def ping(self):
+        """Prove the state database is writable; leaves no residue."""
+        with self.connect() as db:
+            db.execute('insert into attempts values (?,?,?) on conflict(address) do nothing',
+                       ('__ping__', 0, 0.0))
+            db.execute('delete from attempts where address=?', ('__ping__',))
+
     def blocked(self, address):
         key = hashlib.sha256(address.encode()).hexdigest()
         with self.connect() as db:

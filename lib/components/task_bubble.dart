@@ -1,3 +1,4 @@
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:share_plus/share_plus.dart';
@@ -26,6 +27,16 @@ class _TaskBubbleState extends State<TaskBubble> {
             result['file_path'],
             cacheNonce: DateTime.now().microsecondsSinceEpoch.toString(),
           );
+      // Authenticated phone receipt: report received size/digest for verification.
+      try {
+        await widget.store.submitReceipt(
+          task: widget.task['id'],
+          size: data.length,
+          digest: sha256.convert(data).toString(),
+        );
+      } catch (_) {
+        // Download succeeded; receipt retry happens on next open.
+      }
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox;
       await SharePlus.instance.share(
@@ -68,7 +79,7 @@ class _TaskBubbleState extends State<TaskBubble> {
     if (yes != true) return;
     try {
       await ComputerTasks(widget.store.client!).removeFile(widget.task['id']);
-      await widget.store.refreshDevices();
+      await widget.store.refreshTasks();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -97,15 +108,18 @@ class _TaskBubbleState extends State<TaskBubble> {
           widget.store.devices.any(
             (device) =>
                 device['id'] == task['device_id'] &&
-                !['0.2.0', '0.3.0'].contains(device['helper_version']),
+                !['0.2.0', '0.3.0', null].contains(device['helper_version']),
           )
           ? 'queued · update pico on your computer'
           : 'queued · waiting for your computer',
-      'awaiting_approval': 'approve on your computer',
+      'awaiting_approval': 'select the exact file to transfer',
       'working': 'working on your computer',
-      'completed': 'done',
+      'verifying': 'checking received file',
+      'completed': result['receipt'] == 'verified' ? 'done · verified' : 'done',
       'cancelled': 'cancelled',
-      'failed': 'couldn’t finish',
+      'failed': result['error_code'] is String
+          ? 'couldn’t finish · ${result['error_code']}'
+          : 'couldn’t finish',
     };
     final title = {
       'send_file': 'file to phone',
@@ -113,7 +127,14 @@ class _TaskBubbleState extends State<TaskBubble> {
       'open_website': 'open website',
       'open_app': 'open app',
       'manage_permissions': 'permissions',
+      'create_note': 'note',
+      'receive_upload': 'upload',
+      'organize_photos': 'photos',
+      'open_document': 'open document',
     };
+    final candidates = (result['candidates'] as List?)
+        ?.map((e) => Map<String, dynamic>.from(e))
+        .toList();
     return Container(
       margin: EdgeInsets.only(bottom: 16, right: 30),
       padding: EdgeInsets.all(16),
@@ -132,7 +153,8 @@ class _TaskBubbleState extends State<TaskBubble> {
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
-              if (result['file_path'] != null && status == 'completed')
+              if (result['file_path'] != null &&
+                  (status == 'completed' || status == 'verifying'))
                 IconButton(
                   tooltip: 'save or share file',
                   onPressed: _busy ? null : _receive,
@@ -150,7 +172,8 @@ class _TaskBubbleState extends State<TaskBubble> {
                   onPressed: _deleteFile,
                   icon: HeroIcon(HeroIcons.trash, size: 19),
                 ),
-              if (['queued', 'awaiting_approval', 'working'].contains(status))
+              if (['queued', 'awaiting_approval', 'working', 'verifying']
+                  .contains(status))
                 IconButton(
                   tooltip: 'cancel request',
                   onPressed: () => widget.store.cancelTask(task['id']),
@@ -172,7 +195,30 @@ class _TaskBubbleState extends State<TaskBubble> {
             ),
           if (result['name'] is String)
             Text(result['name'], style: TextStyle(fontSize: 14)),
-          if (result['matches'] is List)
+          if (candidates != null && status == 'awaiting_approval')
+            for (final candidate in candidates)
+              Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${candidate['name']} · ${_sizeLabel(candidate['size_bytes'])}',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () => widget.store.approveTransfer(
+                        device: task['device_id'],
+                        searchTask: task,
+                        candidate: candidate,
+                      ),
+                      child: Text('Send'),
+                    ),
+                  ],
+                ),
+              ),
+          if (result['matches'] is List && candidates == null)
             for (final match in result['matches'])
               Padding(
                 padding: EdgeInsets.only(top: 6),
@@ -193,5 +239,12 @@ class _TaskBubbleState extends State<TaskBubble> {
         ],
       ),
     );
+  }
+
+  String _sizeLabel(dynamic bytes) {
+    if (bytes is! int) return '';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

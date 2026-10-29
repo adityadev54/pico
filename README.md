@@ -28,8 +28,18 @@ flutter test
 
 For a local relay, set server-only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then run `sh scripts/run_relay.sh`. An environment file can be supplied with `PICO_ENV_FILE`. Keep secrets out of apps and downloads.
 
-## Current status
+## Production status (1.0.0)
 
-Pairing, chat history and companion sync are implemented. Head Start needs a configured model provider.
+Pairing, Places, companion sync, and the document task queue (search →
+exact-file approval → verified transfer) are implemented with 43 Python
+tests and a Flutter suite. Start here for a release:
 
-Mac and Windows installers are development builds without publisher verification. Physical Android/iPhone and Windows testing remain.
+- Backend: `supabase/README.md` + `supabase/migrations/`
+- Operations: `docs/runbook.md` (build order, secrets, rollback)
+- Release gates: `docs/qa-matrix.md` (automated + hardware checklist)
+- Security record: `docs/security.md` (enforcement, gaps)
+
+Before tagging: run `flutter pub get` (adds `crypto`), the QA gates, and
+`check_connection.py` against production. Head Start stays disabled until
+a model provider is configured. Account deletion is the one documented
+functional gap (see `docs/security.md`).

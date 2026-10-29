@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../components/character_stage.dart';
+import '../components/computer_actions.dart';
 import '../components/home_controls.dart';
 import '../components/request_composer.dart';
+import '../services/command_parser.dart';
 import '../services/pico_store.dart';
 import '../theme/app_theme.dart';
 import 'settings_screen.dart';
@@ -37,7 +39,21 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
   PicoStore get store => widget.store;
   @override
+  void initState() {
+    super.initState();
+    _text.addListener(_dismissStaleError);
+  }
+
+  // Old send errors linger above the input until the next attempt;
+  // typing something new dismisses them so they can't be mistaken
+  // for a fresh failure.
+  void _dismissStaleError() {
+    if (store.error != null) store.clearError();
+  }
+
+  @override
   void dispose() {
+    _text.removeListener(_dismissStaleError);
     _text.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -149,8 +165,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _dispatch(String value) async {
-    await store.savePlace(value);
-    if (!mounted) return;
+    // Supported computer actions run as tasks; other speech stays a Place.
+    if (store.linked && await dispatchComputerAction(context, store, value)) {
+      if (!mounted) return;
+    } else {
+      await store.savePlace(value);
+      if (!mounted) return;
+      if (looksLikeCommand(value)) {
+        _notice(
+          store.linked
+              ? 'Saved as a note — Pico can find files, open documents, create notes, organize photos, open apps and websites. Try “find my brief”.'
+              : 'Saved as a note — connect a computer in Devices to run commands.',
+        );
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _scroll.hasClients) {
         _scroll.animateTo(
