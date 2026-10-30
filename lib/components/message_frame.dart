@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Fit short messages to their content, and cap long ones for readable wrapping.
@@ -11,8 +12,10 @@ class MessageFrame extends StatelessWidget {
     required this.child,
     this.detail,
     this.detailStyle,
+    this.minimumWidth = 0,
   });
   final bool mine;
+  final double minimumWidth;
   final String text;
   final TextStyle style;
   final String? detail;
@@ -40,7 +43,7 @@ class MessageFrame extends StatelessWidget {
         measure(text, style),
         detail == null ? 0.0 : measure(detail!, detailStyle ?? style),
       );
-      final width = math.min(limit, natural + 32);
+      final width = math.min(limit, math.max(minimumWidth, natural + 32));
       return Align(
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         child: SizedBox(width: width, child: child),

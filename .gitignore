@@ -51,6 +51,7 @@ app.*.map.json
 .env
 .env.*
 !.env.example
+config/server.env
 .venv/
 venv/
 __pycache__/

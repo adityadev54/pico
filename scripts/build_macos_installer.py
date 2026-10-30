@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parents[1]
+(ROOT/'downloads').mkdir(exist_ok=True)
 os.chdir(ROOT)
 build=ROOT/'build/installer-macos'
 build.mkdir(parents=True,exist_ok=True)
@@ -20,7 +21,7 @@ subprocess.run(command,check=True)
 app=build/'dist/Pico.app'
 helpers=app/'Contents/Helpers';helpers.mkdir(exist_ok=True)
 shutil.copytree(ROOT/'.local/Pico Overlay.app',helpers/'Pico Overlay.app',dirs_exist_ok=True)
-plist=app/'Contents/Info.plist';info=plistlib.loads(plist.read_bytes());info.update({'LSMinimumSystemVersion':'13.0','CFBundleShortVersionString':'0.1.0','CFBundleVersion':'1','LSUIElement':True,'NSLocalNetworkUsageDescription':'Pico connects your phone to this companion.','NSHighResolutionCapable':True});plist.write_bytes(plistlib.dumps(info))
+plist=app/'Contents/Info.plist';info=plistlib.loads(plist.read_bytes());info.update({'LSMinimumSystemVersion':'13.0','CFBundleShortVersionString':'0.7.0','CFBundleVersion':'1','LSUIElement':True,'NSLocalNetworkUsageDescription':'Pico connects your phone to this companion.','NSHighResolutionCapable':True});plist.write_bytes(plistlib.dumps(info))
 subprocess.run(['codesign','--force','--deep','--sign','-',str(app)],check=True)
 disk=build/'disk';shutil.rmtree(disk,ignore_errors=True);disk.mkdir();shutil.copytree(app,disk/'Pico.app',symlinks=True);(disk/'Applications').symlink_to('/Applications')
 out=ROOT/'downloads/Pico-macOS.dmg'

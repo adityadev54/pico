@@ -8,6 +8,7 @@ import 'appearance_screen.dart';
 import '../services/pico_store.dart';
 import 'account_screen.dart';
 import 'devices_screen.dart';
+import 'apps_screen.dart';
 
 import 'permissions_screen.dart';
 
@@ -79,6 +80,12 @@ class SettingsScreen extends StatelessWidget {
                         },
                       ),
                       SettingsRow(
+                        icon: HeroIcons.window,
+                        title: 'Open apps',
+                        subtitle: 'Approved on your computer',
+                        onTap: () => _open(context, AppsScreen(store: store)),
+                      ),
+                      SettingsRow(
                         icon: HeroIcons.shieldCheck,
                         title: 'Permissions',
                         subtitle: 'Snapshots and Head Start',
@@ -139,7 +146,7 @@ class SettingsScreen extends StatelessWidget {
                       SettingsRow(
                         icon: HeroIcons.informationCircle,
                         title: 'Pico',
-                        subtitle: 'Version 0.1.0',
+                        subtitle: 'Version 0.5.0',
                       ),
                     ],
                   ),

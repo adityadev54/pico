@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../agents/native/windows/PairingConnection.cs" Link="PairingConnection.cs" />
+    <Compile Include="../../agents/native/windows/RelayRequestBody.cs" Link="RelayRequestBody.cs" />
+    <Compile Include="../../agents/native/windows/CompanionMenuPlacement.cs" Link="CompanionMenuPlacement.cs" />
+  </ItemGroup>
+</Project>

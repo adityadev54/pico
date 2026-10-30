@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
+
 import 'floating_surface.dart';
 
 /// The toolbar's capsule surface, shared by account, search and conversation.

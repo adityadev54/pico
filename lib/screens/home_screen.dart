@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../components/character_stage.dart';
+import '../components/computer_actions.dart';
 import '../components/home_controls.dart';
 import '../components/request_composer.dart';
+import '../services/command_parser.dart';
 import '../services/pico_store.dart';
 import '../theme/app_theme.dart';
 import 'settings_screen.dart';
@@ -22,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _drawer = false;
   bool _typing = false;
   bool _voiceSending = false;
@@ -37,7 +39,44 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scroll = ScrollController();
   PicoStore get store => widget.store;
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _text.addListener(_dismissStaleError);
+    store.addListener(_followConversation);
+  }
+
+  String? _shownChat;
+  void _followConversation() {
+    final switched = _shownChat != store.current?.id;
+    _shownChat = store.current?.id;
+    final follow =
+        switched || !_scroll.hasClients || _scroll.position.extentAfter < 100;
+    if (!follow) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  // Old send errors linger above the input until the next attempt;
+  // typing something new dismisses them so they can't be mistaken
+  // for a fresh failure.
+  void _dismissStaleError() {
+    if (store.error != null) store.clearError();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_typing) _followConversation();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    store.removeListener(_followConversation);
+    _text.removeListener(_dismissStaleError);
     _text.dispose();
     _composerFocus.dispose();
     _scroll.dispose();
@@ -148,9 +187,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _dispatch(String value) async {
-    await store.savePlace(value);
-    if (!mounted) return;
+  Future<bool> _dispatch(String value) async {
+    // Supported computer actions run as tasks; other speech stays a Place.
+    if (store.linked && await dispatchComputerAction(context, store, value)) {
+      if (!mounted) return false;
+    } else {
+      if (looksLikeCommand(value)) {
+        _notice(
+          store.linked
+              ? 'Action not started. For a file, try “Create a file called test.txt saying Hello”. For a draft, use “Ask Pico: Draft a three-item checklist into checklist.txt”.'
+              : 'Action not started. Connect a computer in Devices first.',
+        );
+        return false;
+      }
+      await store.savePlace(value);
+      if (!mounted) return false;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _scroll.hasClients) {
         _scroll.animateTo(
@@ -160,6 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
+    return store.error == null;
   }
 
   void _notice(String text) =>
@@ -168,9 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final value = _text.text;
     if (value.trim().isEmpty || store.busy) return;
     await _speech.stop();
-    await _dispatch(value);
+    final sent = await _dispatch(value);
     if (!mounted) return;
-    if (store.error == null) _text.clear();
+    if (sent) _text.clear();
     if (_scroll.hasClients) {
       _scroll.animateTo(
         _scroll.position.maxScrollExtent,
@@ -206,6 +259,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   store: store,
                   width: slide,
                   onClose: () => setState(() => _drawer = false),
+                  onNewChat: () {
+                    ++_voiceGeneration;
+                    _speech.cancel();
+                    _text.clear();
+                    setState(() {
+                      _drawer = false;
+                      _typing = true;
+                      _heard = '';
+                    });
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _composerFocus.requestFocus();
+                    });
+                  },
                   onSettings: () => _open(SettingsScreen(store: store)),
                 ),
                 AnimatedContainer(
@@ -237,6 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _open(DevicesScreen(store: store)),
                               ),
                               HomeControls(
+                                store: store,
                                 onMenu: () {
                                   FocusManager.instance.primaryFocus?.unfocus();
                                   setState(() => _drawer = true);
@@ -254,29 +321,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        if (store.error != null)
-                                          Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                            ),
-                                            child: Material(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .surface,
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                              child: Padding(
-                                                padding: EdgeInsets.all(14),
-                                                child: Text(
-                                                  store.error!,
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        if (!_typing && store.places.isNotEmpty)
+                                        if (!_typing &&
+                                            store.visiblePlaces.isNotEmpty)
                                           SizedBox(
                                             height: store.linked
                                                 ? 105 * store.characterScale

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:heroicons/heroicons.dart';
 
 import '../components/character_picker.dart';
@@ -52,7 +53,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 return false;
               }
             } else if (a.target != 'character' &&
-                !a.target.startsWith('search:')) {
+                !a.target.startsWith('search:') &&
+                !a.target.startsWith('task:')) {
               return false;
             }
             return seen.add(a.target);
@@ -135,14 +137,33 @@ class _SearchScreenState extends State<SearchScreen> {
                                 ? HeroIcons.magnifyingGlass
                                 : activity.target == 'character'
                                 ? HeroIcons.faceSmile
+                                : activity.target.startsWith('task:')
+                                ? HeroIcons.paperAirplane
                                 : HeroIcons.chatBubbleLeft,
-                            title: activity.target.startsWith('place:')
+                            title:
+                                activity.target.startsWith('place:') ||
+                                    activity.target.startsWith('task:')
                                 ? activity.detail
                                 : activity.title,
                             subtitle: activity.target.startsWith('place:')
                                 ? 'Chat'
+                                : activity.target.startsWith('task:')
+                                ? 'Sent command · tap to copy'
                                 : activity.detail,
                             onTap: () {
+                              if (activity.target.startsWith('task:')) {
+                                Clipboard.setData(
+                                  ClipboardData(text: activity.detail),
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Command copied — paste it to send again.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
                               if (activity.target.startsWith('place:')) {
                                 final chat = store.places.firstWhere(
                                   (p) => 'place:${p.id}' == activity.target,

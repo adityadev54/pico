@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY relay ./relay
+COPY server ./server
 COPY website ./website
 COPY downloads ./downloads
 COPY build/web ./build/web

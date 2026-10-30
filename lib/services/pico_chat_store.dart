@@ -30,7 +30,13 @@ extension PicoChatStore on PicoStore {
       .then((_) {});
 
   void loadPlaces() {
+    composingNewChat = false;
+    _hiddenTaskIds.clear();
+    _newChatPlaceIds.clear();
+    _clearAppAccess();
     places.clear();
+    _placeUpdates.clear();
+    pendingPlaceId = null;
     selectedPlaceId = null;
     activities.clear();
     try {
@@ -43,20 +49,33 @@ extension PicoChatStore on PicoStore {
       /* Leave malformed history empty. */
     }
     try {
+      final saved = jsonDecode(preferences.getString(_placesKey) ?? '[]');
+      final rows = saved is Map ? saved['places'] as List : saved as List;
+      if (saved is Map) {
+        pendingPlaceId = saved['pending_place'] as String?;
+        _placeUpdates.addAll(
+          (saved['updates'] as List? ?? []).map(
+            (e) => Map<String, dynamic>.from(e),
+          ),
+        );
+      }
       places.addAll(
-        (jsonDecode(preferences.getString(_placesKey) ?? '[]') as List).map(
-          (e) => Place.fromJson(Map<String, dynamic>.from(e)),
-        ),
+        rows.map((e) => Place.fromJson(Map<String, dynamic>.from(e))),
       );
     } catch (_) {
-      error = 'Saved Places could not be read.';
+      error = 'Saved chats could not be read.';
     }
+    loadChats();
   }
 
   Future<void> _persist() async {
     if (!await preferences.setString(
       _placesKey,
-      jsonEncode(places.map((p) => p.toJson()).toList()),
+      jsonEncode({
+        'places': places.map((p) => p.toJson()).toList(),
+        'updates': _placeUpdates,
+        'pending_place': pendingPlaceId,
+      }),
     )) {
       throw StateError('Storage unavailable');
     }
@@ -65,7 +84,11 @@ extension PicoChatStore on PicoStore {
   Future<void> savePlace(String sentence) async {
     sentence = sentence.trim();
     if (sentence.isEmpty || busy) return;
+    final owner = userId;
+    final chat = await ensureChat(sentence);
+    if (owner != userId) return;
     final place = Place(
+      chatId: chat.id,
       id: pendingPlaceId ?? _uuid(),
       sentence: sentence,
       created: DateTime.now(),
@@ -83,6 +106,7 @@ extension PicoChatStore on PicoStore {
       return;
     }
     _changed();
+    if (composingNewChat) _newChatPlaceIds.add(place.id);
     await recordActivity('Place saved', sentence, 'place:${place.id}');
     setMood('working');
     try {
@@ -96,8 +120,31 @@ extension PicoChatStore on PicoStore {
   Future<void> updatePlace(Place place, {bool? parked, bool? finished}) async {
     final i = places.indexWhere((p) => p.id == place.id);
     if (i < 0) return;
+    final owner = userId;
     final old = places[i];
-    places[i] = old.copyWith(parked: parked, finished: finished);
+    places[i] = old.copyWith(
+      parked: finished == true ? false : parked,
+      finished: finished,
+    );
+    final target =
+        old.deliveryDeviceId ?? devices.firstOrNull?['id'] as String?;
+    Map<String, dynamic>? update;
+    if (target != null && old.role == 'user' && old.delivery != 'request') {
+      update = {
+        'id': _uuid(),
+        'device_id': target,
+        'kind': 'parked',
+        'payload': {
+          'place_id': place.id,
+          'status': finished == true
+              ? 'finished'
+              : parked == true
+              ? 'parked'
+              : 'ready',
+        },
+      };
+      _placeUpdates.add(update);
+    }
     try {
       await _persist();
       error = null;
@@ -111,8 +158,18 @@ extension PicoChatStore on PicoStore {
         'place:${place.id}',
       );
     } catch (_) {
+      if (owner != userId) return;
       places[i] = old;
+      if (update != null) _placeUpdates.remove(update);
       error = 'Couldn’t update your Place.';
+      _changed();
+      return;
+    }
+    if (owner != userId) return;
+    try {
+      await _flushPlaceUpdates();
+    } catch (_) {
+      error = 'Change saved. Desktop sync will retry when connected.';
     }
     _changed();
   }
@@ -147,9 +204,14 @@ extension PicoChatStore on PicoStore {
     // Clear only this app’s local history; retain live delivery messages.
     await preferences.remove(_placesKey);
     await preferences.remove(_activitiesKey);
+    _deletedChats.addAll(sessions.map((s) => s.id));
+    await persistChats();
     activities.clear();
     places.clear();
+    _placeUpdates.clear();
+    pendingPlaceId = null;
     sessions.clear();
+    await persistChats();
     tasks.clear();
     current = null;
     selectedPlaceId = null;

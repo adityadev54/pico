@@ -124,13 +124,10 @@ void main() {
       expect(pixel.sublist(offset, offset + 3), [245, 241, 238]);
       image.dispose();
     });
-    expect(
-      tester.getBottomRight(find.byTooltip('Save Place')).dy,
-      lessThan(514),
-    );
+    expect(tester.getBottomRight(find.byTooltip('Send')).dy, lessThan(514));
     tester.view.resetViewInsets();
     await tester.pump();
-    await tester.tap(find.byTooltip('Save Place'));
+    await tester.tap(find.byTooltip('Send'));
     await tester.pump();
     expect(store.places.single.sentence, 'Finish the landlord email');
     await tester.tap(find.byTooltip('Save a Place'));

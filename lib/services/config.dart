@@ -17,7 +17,10 @@ abstract final class Config {
   static const setupUrl = String.fromEnvironment('SETUP_URL');
   static String get relayBase => relayUrl.isNotEmpty
       ? relayUrl
-      : kIsWeb && Uri.base.host.isNotEmpty
+      // Production PWA is served by the relay itself, so same-origin is
+      // right there. A local `flutter run` dev server has no API routes,
+      // so debug builds use the production relay like native does.
+      : kIsWeb && !kDebugMode && Uri.base.host.isNotEmpty
       ? Uri.base.origin
       : 'https://pico-companion.fly.dev';
   static String get downloadUrl =>

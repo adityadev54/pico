@@ -3,6 +3,8 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
+let excluded: [String] = CommandLine.arguments.count > 3
+    ? ((try? JSONSerialization.jsonObject(with: Data(CommandLine.arguments[3].utf8))) as? [String] ?? []) : []
 var result: [String: Any] = ["idle": CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .null), "screen_access": CGPreflightScreenCaptureAccess()]
 if let app = NSWorkspace.shared.frontmostApplication {
     result["app"] = app.localizedName ?? "Unknown app"
@@ -11,7 +13,11 @@ if let app = NSWorkspace.shared.frontmostApplication {
        let window = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier && ($0[kCGWindowLayer as String] as? Int) == 0 }) {
         result["title"] = window[kCGWindowName as String] as? String ?? ""
         // Capture only this active app window, never the full display.
-        if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "snapshot", CGPreflightScreenCaptureAccess(),
+        if CommandLine.arguments.count >= 3 && CommandLine.arguments[1] == "snapshot",
+           !excluded.contains(app.bundleIdentifier ?? ""),
+           !(result["title"] as? String ?? "").lowercased().contains("incognito"),
+           !(result["title"] as? String ?? "").lowercased().contains("private browsing"),
+           CGPreflightScreenCaptureAccess(),
            let id = window[kCGWindowNumber as String] as? UInt32,
            let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id, [.boundsIgnoreFraming, .bestResolution]) {
             let width = min(image.width, 1280)

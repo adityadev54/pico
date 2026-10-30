@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
+
 import 'capsule_input.dart';
 
 class RequestComposer extends StatelessWidget {
@@ -23,7 +24,7 @@ class RequestComposer extends StatelessWidget {
     child: CapsuleInput(
       controller: controller,
       focusNode: focusNode,
-      hint: listening ? 'Listening…' : 'What were you about to do?',
+      hint: listening ? 'Listening…' : 'Ask or save a thought…',
       icon: HeroIcons.microphone,
       leading: IconButton(
         tooltip: 'Voice',
@@ -39,7 +40,7 @@ class RequestComposer extends StatelessWidget {
       inputAction: TextInputAction.send,
       onSubmitted: (_) => onSend(),
       trailing: IconButton(
-        tooltip: 'Save Place',
+        tooltip: 'Send',
         onPressed: busy ? null : onSend,
         icon: HeroIcon(
           HeroIcons.arrowUpCircle,

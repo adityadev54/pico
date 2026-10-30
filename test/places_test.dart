@@ -9,6 +9,31 @@ import 'package:pico/theme/app_theme.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('New chat hides old content without deleting it', () async {
+    final store = PicoStore(await SharedPreferences.getInstance())
+      ..loadPlaces();
+    await store.savePlace('Existing thought');
+    final old = store.places.single;
+    store.tasks.add({'id': 'old-task'});
+    store.selectPlace(old);
+    store.newSession();
+    expect(store.visiblePlaces, isEmpty);
+    expect(store.visibleTasks, isEmpty);
+    expect(store.places.single.id, old.id);
+    await store.savePlace('A new thought');
+    expect(store.visiblePlaces.single.sentence, 'A new thought');
+    await store.savePlace('Another message');
+    expect(store.visiblePlaces.map((p) => p.sentence), [
+      'A new thought',
+      'Another message',
+    ]);
+    store.tasks.insert(0, {'id': 'new-task'});
+    expect(store.visibleTasks.single['id'], 'new-task');
+    store.selectPlace(old);
+    expect(store.visiblePlaces.single.id, old.id);
+    await Future<void>.delayed(Duration.zero);
+    store.dispose();
+  });
   test('Places persist, park, finish, and clear without a backend', () async {
     final prefs = await SharedPreferences.getInstance();
     final store = PicoStore(prefs);
@@ -132,6 +157,11 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Open menu'));
       await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('New chat'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(store.composingNewChat, isTrue);
+      expect(find.byType(TextField), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       store.dispose();
