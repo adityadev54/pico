@@ -22,6 +22,7 @@ POST /execute  — run one validated tool call, return structured result
 from __future__ import annotations
 
 import json
+import hmac
 import os
 import sys
 import threading
@@ -100,6 +101,8 @@ def execute_tool(tool_call: dict, grants: list[dict]) -> dict:
     except ToolError as error:
         return _fail(task_id, step_id, call_id, error.code, error.message)
 
+    if tool not in ('open_app', 'open_website', 'manage_permissions') and not grants:
+        return _fail(task_id, step_id, call_id, 'permission_denied', 'Choose an explicit folder grant first.')
     ctx = _make_ctx(grants)
     try:
         data, evidence = dispatch(tool, clean_args, ctx)
@@ -146,6 +149,8 @@ def _fail(task_id: str, step_id: str, call_id: str,
 
 
 def make_handler(token: str, grants: list[dict]):
+    if not token:
+        raise ValueError('PICO_AGENT_TOKEN is required for the local tool server.')
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -159,10 +164,10 @@ def make_handler(token: str, grants: list[dict]):
             self.wfile.write(raw)
 
         def _check_auth(self) -> bool:
-            if not token:
-                return True  # No token required when running without a secret.
+            if self.headers.get('Origin') is not None:
+                return False
             bearer = self.headers.get("Authorization", "").removeprefix("Bearer ")
-            return bearer == token
+            return hmac.compare_digest(bearer.encode(), token.encode())
 
         def do_GET(self) -> None:
             path = urlsplit(self.path).path
@@ -215,7 +220,7 @@ def main(argv=None) -> None:
 
     print(
         f"Pico agent tool server: http://127.0.0.1:{args.port}  "
-        f"grants={len(grants)}  auth={'yes' if token else 'none (dev)'}",
+        f"grants={len(grants)}  auth={'required'}",
         flush=True,
     )
     ThreadingHTTPServer(

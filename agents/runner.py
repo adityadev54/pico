@@ -90,7 +90,11 @@ def _check_args(argv, cwd, timeout, cap):
 def start(argv, cwd=None, timeout=None, cap=DEFAULT_OUTPUT_CAP, env_add=None):
     """Start a child process; no shell involved. Returns a ProcHandle."""
     argv, root, timeout, cap = _check_args(argv, cwd, timeout, cap)
-    env = dict(os.environ)
+    # Never inherit API/session secrets into a user-approved command.
+    env = {k:v for k,v in os.environ.items() if k.upper() in {
+        'PATH','HOME','USER','LOGNAME','LANG','LC_ALL','TMPDIR','TEMP','TMP',
+        'SYSTEMROOT','WINDIR','COMSPEC','PATHEXT','LOCALAPPDATA','APPDATA',
+        'USERPROFILE','HOMEDRIVE','HOMEPATH','DOTNET_ROOT','JAVA_HOME'}}
     for key, value in (env_add or {}).items():
         env[str(key)] = str(value)
     kwargs = {'cwd': str(root), 'env': env, 'stdout': subprocess.PIPE,

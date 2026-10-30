@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../models/computer_command.dart';
 
 /// True when the text uses command language (addressing Pico, a request
@@ -5,18 +7,22 @@ import '../models/computer_command.dart';
 /// Used to explain the miss instead of failing silently as a note.
 bool looksLikeCommand(String speech) {
   return RegExp(
-    r'^(hey pico|pico|please|can you|could you|would you|will you|open|launch|start|find|search|look for|locate|send|transfer|bring|share|summari[sz]e|google|visit|go to|browse|manage|show|create|make|write|rename|change|arrange|organize|organise|gather|collect)\b',
+    r'^(hey pico|pico|please|can you|could you|would you|will you|open|launch|start|find|search|look for|locate|send|transfer|bring|share|summari[sz]e|google|visit|go to|browse|manage|show|ask (?:pico|picko|piko)|draft|create|make|write|rename|change|arrange|organize|organise|gather|collect)\b',
     caseSensitive: false,
   ).hasMatch(speech.trim());
 }
 
+/// Common speech transcriptions retain the explicit Ask Pico opt-in.
+String? museRequestText(String speech) => RegExp(
+  r'^ask\s+(?:pico|picko|piko)[: ,]+(.+)$',
+  caseSensitive: false,
+).firstMatch(speech.trim())?.group(1)?.trim();
+
 String? _websiteUrl(String inner) {
-  var url = inner
-      .trim()
-      .replaceFirst(
-        RegExp(r'^(?:the )?website\s+', caseSensitive: false),
-        '',
-      );
+  var url = inner.trim().replaceFirst(
+    RegExp(r'^(?:the )?website\s+', caseSensitive: false),
+    '',
+  );
   url = url
       .replaceAll(RegExp(r'\s+dot\s+', caseSensitive: false), '.')
       .replaceAll(RegExp(r'\s+slash\s+', caseSensitive: false), '/');
@@ -54,12 +60,12 @@ String? _docQuery(String inner) {
     return null;
   }
   final name = trimmed
+      .replaceFirst(RegExp(r'^(?:the |my |a |an )', caseSensitive: false), '')
       .replaceFirst(
-        RegExp(r'^(?:the |my |a |an )', caseSensitive: false),
-        '',
-      )
-      .replaceFirst(
-        RegExp(r'^(?:file |document )(?:named |called )?', caseSensitive: false),
+        RegExp(
+          r'^(?:file |document )(?:named |called )?',
+          caseSensitive: false,
+        ),
         '',
       )
       .replaceAll(RegExp(r'\s+dot\s+', caseSensitive: false), '.')
@@ -85,19 +91,13 @@ ComputerCommand? parseComputerCommand(String speech) {
   var text = speech
       .trim()
       .replaceAll(RegExp(r'[.!?]+$'), '')
-      .replaceFirst(
-        RegExp(r'\s+please\s*$', caseSensitive: false),
-        '',
-      );
+      .replaceFirst(RegExp(r'\s+please\s*$', caseSensitive: false), '');
   text = text.replaceFirst(
     RegExp(r'^(hey\s+pico[, ]*|pico[, ]*|please\s+)', caseSensitive: false),
     '',
   );
   text = text.replaceFirst(
-    RegExp(
-      r'^(can you|could you|would you|will you)\s+',
-      caseSensitive: false,
-    ),
+    RegExp(r'^(can you|could you|would you|will you)\s+', caseSensitive: false),
     '',
   );
   final trailingWeb = RegExp(
@@ -116,6 +116,29 @@ ComputerCommand? parseComputerCommand(String speech) {
   }
   ComputerCommand command(String kind, Map<String, dynamic> input) =>
       ComputerCommand(kind, input, deviceHint: device);
+  if (RegExp(
+    r'^(?:list|show) (?:my )?files$',
+    caseSensitive: false,
+  ).hasMatch(text)) {
+    return command('list_files', {'path': '.'});
+  }
+  final read = RegExp(r'^read (.+)$', caseSensitive: false).firstMatch(text);
+  if (read != null) {
+    return command('read_file', {'path': read.group(1)!.trim()});
+  }
+  final run = RegExp(
+    r'^run command (\[.+\])$',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (run != null) {
+    try {
+      final argv = jsonDecode(run.group(1)!);
+      if (argv is List && argv.isNotEmpty && argv.every((a) => a is String)) {
+        return command('run_command', {'argv': argv});
+      }
+    } catch (_) {}
+    return null;
+  }
   final appMatch = RegExp(
     r'^(?:open|launch|start)\s+(?:the\s+)?(calculator|calendar|vs\s*code|visual studio code|browser|default browser|notes|sticky notes)(?: app)?$',
     caseSensitive: false,
@@ -193,12 +216,11 @@ ComputerCommand? parseComputerCommand(String speech) {
   ).firstMatch(text);
   if (organize != null) {
     final folder = _cleanNoteName(organize.group(1)!);
-    if (folder.isNotEmpty) return command('organize_photos', {'folder': folder});
+    if (folder.isNotEmpty) {
+      return command('organize_photos', {'folder': folder});
+    }
   }
-  final open = RegExp(
-    r'^open\s+(.+)$',
-    caseSensitive: false,
-  ).firstMatch(text);
+  final open = RegExp(r'^open\s+(.+)$', caseSensitive: false).firstMatch(text);
   if (open != null) {
     final url = _websiteUrl(open.group(1)!);
     if (url != null) return command('open_website', {'url': url});
@@ -229,7 +251,7 @@ ComputerCommand? parseComputerCommand(String speech) {
     if (name.isNotEmpty) return command('steer_output', {'path': name});
   }
   final note = RegExp(
-    r'^(?:create|make|write)\s+(?:a\s+)?note\s+(?:named|called)\s+(.+?)(?:\s+saying\s+(.+))?$',
+    r'^(?:create|make|write)\s+(?:a\s+)?(?:note|(?:text\s+)?file)\s+(?:(?:named|called)\s+)?(.+?)(?:\s+(?:saying|containing|with contents?)\s+(.+))?$',
     caseSensitive: false,
   ).firstMatch(noteText);
   if (note != null) {

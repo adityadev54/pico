@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
+import 'task_view.dart';
 
 class ComputerTasks {
   ComputerTasks(this.client);
@@ -20,6 +21,7 @@ class ComputerTasks {
     required String session,
     required String kind,
     required Map<String, dynamic> input,
+    bool confirmed = false,
   }) async {
     final response = await http
         .post(
@@ -30,6 +32,7 @@ class ComputerTasks {
             'session_id': session,
             'kind': kind,
             'input': input,
+            'confirmed': confirmed,
           }),
         )
         .timeout(const Duration(seconds: 25));
@@ -39,13 +42,27 @@ class ComputerTasks {
     return Map<String, dynamic>.from(jsonDecode(response.body));
   }
 
-  Future<List<Map<String, dynamic>>> list() async {
-    final rows = await client
-        .from('tasks')
-        .select()
+  Future<List<Map<String, dynamic>>> list({String? session}) async {
+    var query = client.from('tasks').select();
+    if (session != null) query = query.eq('session_id', session);
+    final rows = await query
         .order('created_at', ascending: false)
-        .limit(30);
-    return rows.map((e) => Map<String, dynamic>.from(e)).toList();
+        .limit(session == null ? 100 : 200);
+    return rows.map((e) => picoTaskView(Map<String, dynamic>.from(e))).toList();
+  }
+
+  Future<Uint8List> download(String id) async {
+    final response = await http
+        .post(
+          Uri.parse('$_base/files/download'),
+          headers: _headers,
+          body: jsonEncode({'id': id}),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw Exception(_message(response, 'Couldn’t download this file'));
+    }
+    return base64Decode(jsonDecode(response.body)['content_base64'] as String);
   }
 
   Future<void> removeFile(String id) async =>
@@ -78,6 +95,7 @@ class ComputerTasks {
     required String device,
     required String name,
     required Uint8List bytes,
+    String? grant,
   }) async {
     final response = await http
         .post(
@@ -88,6 +106,7 @@ class ComputerTasks {
             'name': name,
             'content_base64': base64Encode(bytes),
             'purpose': 'transfer',
+            'grant_id': ?grant,
           }),
         )
         .timeout(const Duration(seconds: 60));

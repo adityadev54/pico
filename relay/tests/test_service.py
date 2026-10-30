@@ -29,6 +29,11 @@ class ServiceTests(unittest.TestCase):
         self.device = device_row()
         self.db.tables['devices'].append(dict(self.device))
 
+    def make_transfer(self, label='c1'):
+        candidate={'candidate_id':str(uuid.uuid5(uuid.NAMESPACE_URL,label)),'name':'fixture.txt','size_bytes':11,'digest':hashlib.sha256(b'hello pico!').hexdigest()}
+        search=self.db.db('tasks',body={'user_id':self.owner,'device_id':self.device['id'],'kind':'find_document','input':{},'status':'awaiting_approval','result':{'candidates':[candidate]}},method='POST')[0]
+        return self.service.create_task(self.owner,self.device['id'],'','send_file',{'search_task_id':search['id'],'candidate_id':candidate['candidate_id']})
+
     def test_user_needs_token(self):
         with self.assertRaises(ApiError) as ctx:
             self.service.user('')
@@ -170,8 +175,7 @@ class ServiceTests(unittest.TestCase):
             'data_json': json.dumps({'candidates': []}), 'evidence_json': '{}'})
         row = self.db.db('tasks', {'id': 'eq.' + empty['id']})[0]
         self.assertEqual((row['status'], row['result']['error_code']), ('failed', 'no_match'))
-        send = self.service.create_task(self.owner, self.device['id'], '', 'send_file',
-                                        {'candidate_id': 'c1', 'approval_id': 'a1'})
+        send = self.make_transfer('c1')
         self.service.complete_tool_result(self.owner, self.device['id'], {
             'task_id': send['id'], 'status': 'succeeded',
             'data_json': json.dumps({'name': 'x'}), 'evidence_json': json.dumps(
@@ -190,8 +194,7 @@ class ServiceTests(unittest.TestCase):
                          ('failed', 'invalid_message'))
 
     def test_transfer_receipt_verifies_both_directions(self):
-        task = self.service.create_task(self.owner, self.device['id'], '', 'send_file',
-                                        {'candidate_id': 'c1', 'approval_id': 'a1'})
+        task = self.make_transfer('c1')
         raw = b'hello pico!'
         digest_value = hashlib.sha256(raw).hexdigest()
         self.db.db('tasks', {'id': 'eq.' + task['id']}, {
@@ -203,8 +206,7 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(out['verified'])
         row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
         self.assertEqual(row['status'], 'completed')
-        task2 = self.service.create_task(self.owner, self.device['id'], '', 'send_file',
-                                         {'candidate_id': 'c2', 'approval_id': 'a2'})
+        task2 = self.make_transfer('c2')
         self.db.db('tasks', {'id': 'eq.' + task2['id']}, {
             'status': 'verifying',
             'result': {'size_bytes': 3, 'digest': 'abc'}}, 'PATCH')
@@ -215,8 +217,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(row['status'], 'failed')
 
     def test_upload_transfer_rejects_before_network(self):
-        task = self.service.create_task(self.owner, self.device['id'], '', 'send_file',
-                                        {'candidate_id': 'c1', 'approval_id': 'a1'})
+        task = self.make_transfer('c1')
         find = self.service.create_task(self.owner, self.device['id'], '', 'find_document',
                                         {'query': 'q'})
         with self.assertRaises(ApiError):
@@ -419,8 +420,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(row['status'], 'cancelled')
 
     def test_delete_transfer_and_clear_history(self):
-        task = self.service.create_task(self.owner, self.device['id'], '', 'send_file',
-                                        {'candidate_id': 'c1', 'approval_id': 'a1'})
+        task = self.make_transfer('c1')
         self.db.db('tasks', {'id': 'eq.' + task['id']},
                    {'result': {'file_path': 'owner-1/x', 'name': 'h.txt'}}, 'PATCH')
         self.service.delete_transfer(self.owner, task['id'])

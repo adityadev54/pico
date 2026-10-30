@@ -15,6 +15,8 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from server.model_safety import authorize
+from relay.model_budget import BudgetDenied
 
 
 SYSTEM_PROMPT = """You are a task planner for Pico, a personal desktop assistant.
@@ -82,7 +84,8 @@ def plan(task: dict, tools: list[dict], cfg: dict) -> dict:
     )
     body = {
         "model": model,
-        "max_tokens": 400,
+        "max_completion_tokens": 400,
+        "reasoning_effort": "minimal",
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -97,7 +100,11 @@ def plan(task: dict, tools: list[dict], cfg: dict) -> dict:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        authorize(request, task, cfg)
+    except BudgetDenied as error:
+        return {"error":str(error)}
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
             payload = json.load(response)
         raw_text = str(payload["choices"][0]["message"]["content"]).strip()
     except Exception as exc:
@@ -113,9 +120,9 @@ def plan(task: dict, tools: list[dict], cfg: dict) -> dict:
             try:
                 parsed = json.loads(match.group(1))
             except json.JSONDecodeError:
-                return {"error": f"Model returned unparseable JSON: {raw_text[:200]}"}
+                return {"error": "Model returned an invalid plan."}
         else:
-            return {"error": f"Model returned unparseable JSON: {raw_text[:200]}"}
+            return {"error": "Model returned an invalid plan."}
 
     action = parsed.get("action")
     if action == "clarify":

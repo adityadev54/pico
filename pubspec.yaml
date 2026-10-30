@@ -1,7 +1,7 @@
 name: pico
 description: "Pico — your companion, across your devices."
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.7.2+13
 
 environment:
   sdk: ^3.13.5

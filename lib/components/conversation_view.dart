@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:heroicons/heroicons.dart';
+
 import '../models/place.dart';
+
 import 'package:kin_ui/kin_ui.dart';
+
 import '../services/pico_store.dart';
 import 'screen_chrome.dart';
 import 'chat_bubble_shape.dart';
@@ -29,7 +32,9 @@ class ConversationView extends StatelessWidget {
   final bool typing;
   @override
   Widget build(BuildContext context) =>
-      store.places.isEmpty && store.tasks.isEmpty
+      store.visiblePlaces.isEmpty &&
+          store.visibleTasks.isEmpty &&
+          store.error == null
       ? SafeArea(
           bottom: false,
           child: Padding(
@@ -80,7 +85,7 @@ class ConversationView extends StatelessWidget {
                   12,
                   MediaQuery.paddingOf(context).top + 100,
                   12,
-                  300,
+                  MediaQuery.paddingOf(context).bottom + (typing ? 104 : 280),
                 ),
                 children: [
                   if (!store.linked)
@@ -89,22 +94,20 @@ class ConversationView extends StatelessWidget {
                       onTap: onDevices,
                     ),
                   const SizedBox(height: 12),
-                  for (final task in store.tasks.take(5))
-                    TaskBubble(
-                      key: ValueKey(task['id']),
-                      task: task,
-                      store: store,
-                    ),
-                  for (final place in store.places.reversed.where(
-                    (p) => store.selectedPlaceId == null
-                        ? !p.finished
-                        : p.id == store.selectedPlaceId,
-                  ))
-                    PlaceMessage(
-                      key: ValueKey(place.id),
-                      place: place,
-                      store: store,
-                    ),
+                  for (final entry in store.conversation)
+                    if (entry.place != null)
+                      PlaceMessage(
+                        key: ValueKey(entry.place!.id),
+                        place: entry.place!,
+                        store: store,
+                      )
+                    else
+                      TaskBubble(
+                        key: ValueKey(entry.task!['id']),
+                        task: entry.task!,
+                        store: store,
+                      ),
+                  if (store.error != null) AgentMessage(text: store.error!),
                   if (store.places.isNotEmpty &&
                       store.places.every((p) => p.finished) &&
                       store.tasks.isEmpty)
@@ -175,6 +178,7 @@ class _PlaceMessageState extends State<PlaceMessage> {
   @override
   Widget build(BuildContext context) {
     final place = widget.place;
+    if (place.role == 'assistant') return AgentMessage(text: place.sentence);
     final colors = Theme.of(context).colorScheme;
     final status =
         '${place.parked
@@ -185,6 +189,8 @@ class _PlaceMessageState extends State<PlaceMessage> {
             ? 'Delivered'
             : place.delivery == 'queued'
             ? 'Waiting for computer'
+            : place.delivery == 'request'
+            ? 'Request'
             : 'Saved here'}';
     final textStyle = TextStyle(
       fontSize: 16,

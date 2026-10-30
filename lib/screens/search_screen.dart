@@ -140,7 +140,8 @@ class _SearchScreenState extends State<SearchScreen> {
                                 : activity.target.startsWith('task:')
                                 ? HeroIcons.paperAirplane
                                 : HeroIcons.chatBubbleLeft,
-                            title: activity.target.startsWith('place:') ||
+                            title:
+                                activity.target.startsWith('place:') ||
                                     activity.target.startsWith('task:')
                                 ? activity.detail
                                 : activity.title,

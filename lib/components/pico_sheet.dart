@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'pico_dialog.dart';
 
 Future<T?> showPicoSheet<T>({
@@ -37,10 +38,16 @@ Future<T?> showPicoSheet<T>({
       ),
       child: Align(
         alignment: Alignment.bottomCenter,
-        child: PicoDialog(
-          maxWidth: 500,
-          contentPadding: const EdgeInsets.all(16),
-          content: SingleChildScrollView(child: builder(context)),
+        child: Builder(
+          builder: (context) {
+            final content = builder(context);
+            if (content is PicoDialog) return content;
+            return PicoDialog(
+              maxWidth: 500,
+              contentPadding: const EdgeInsets.all(16),
+              content: SingleChildScrollView(child: content),
+            );
+          },
         ),
       ),
     ),

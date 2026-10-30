@@ -7,10 +7,10 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     output=ROOT/'downloads';output.mkdir(exist_ok=True)
     with zipfile.ZipFile(output/'Pico-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
-        for folder in ['agents','assets/characters','lib','website','relay','scripts','config']:
+        for folder in ['agents','assets/characters','lib','website','relay','scripts','config','server']:
             for path in (ROOT/folder).rglob('*'):
                 if not path.is_file() or any(part in ('__pycache__','bin','obj','.local') for part in path.parts):continue
-                if path.name=='Info.md' or path.suffix not in ('.py','.md','.swift','.gif','.png','.json','.cs','.csproj','.ico','.sh','.css','.html','.js','.mjs'):continue
+                if path.name=='Info.md' or path.suffix not in ('.py','.dart','.md','.swift','.gif','.png','.json','.cs','.csproj','.ico','.sh','.css','.html','.js','.mjs'):continue
                 archive.write(path,path.relative_to(ROOT))
         for name in ['README.md','pubspec.yaml','pubspec.lock','fly.toml','relay/Dockerfile']:
             archive.write(ROOT/name,name)

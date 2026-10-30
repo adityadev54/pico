@@ -66,6 +66,8 @@ def make_handler(service):
                 token = self.headers.get('Authorization', '').removeprefix('Bearer ')
                 body = {}
                 if method == 'POST':
+                    if self.headers.get('Transfer-Encoding'):
+                        raise ApiError(411, 'Update Pico on your computer, then retry with a new connection code.')
                     length = int(self.headers.get('Content-Length', 0))
                     limit = 2_000_000 if urllib.parse.urlsplit(self.path).path in ('/agent/transfer', '/uploads') else 16000
                     if length < 0 or length > limit:
@@ -97,13 +99,22 @@ def make_handler(service):
                 if path.startswith('/agent/'):
                     device = service.device(token)
                     owner, id = device['user_id'], device['id']
-                    if path == '/agent/poll' and method == 'POST':
+                    if path == '/agent/start' and method == 'POST':
+                        rows=service.db.db('tasks',{'id':'eq.'+identifier(body.get('task_id')),'user_id':'eq.'+owner,'device_id':'eq.'+id})
+                        if not rows:raise ApiError(404,'Request not found.')
+                        cancelled=rows[0]['status'] in ('cancelled','failed','completed') or (rows[0]['status']=='awaiting_approval' and bool((rows[0].get('result') or {}).get('proposal')))
+                        if not cancelled:service.db.db('tasks',{'id':'eq.'+rows[0]['id']},{'status':'working'},'PATCH')
+                        return self.send(200,{'cancelled':cancelled,'phone_approved':(rows[0].get('input') or {}).get('_pico_phone_approved') is True})
+                    if path == '/agent/poll'  and method == 'POST':
+                        if isinstance(body.get('capabilities'),dict):
+                            from .helper_catalog import clean
+                            service.jobs.catalog(owner,id,clean(body['capabilities']))
                         service.db.db('devices', {'id': 'eq.'+id}, {'last_seen': stamp()}, 'PATCH')
                         return self.send(200, {'mail': service.mailbox(owner, id), 'device_id': id})
                     if path == '/agent/ack' and method == 'POST':
                         return self.send(200, service.acknowledge(owner, id, body.get('ids', [])))
                     if path == '/agent/mail' and method == 'POST':
-                        if body.get('kind') not in ('idle', 'head_start', 'parked', 'tool_result'):
+                        if body.get('kind') not in ('idle', 'head_start', 'parked', 'tool_result', 'app_catalog', 'app_result'):
                             raise ApiError(400, 'Unsupported computer message.')
                         if body.get('kind') == 'tool_result':
                             service.complete_tool_result(owner, id, body.get('payload', {}))
@@ -117,14 +128,22 @@ def make_handler(service):
                         return self.send(200, service.upload_transfer(owner, id, body))
                 if path in ('/devices', '/pairing', '/mail', '/receipts', '/unpair', '/phone/mail', '/phone/ack',
                             '/tasks', '/tasks/cancel', '/tasks/steer', '/tasks/receipt', '/files/delete', '/history/clear',
-                            '/uploads'):
+                            '/uploads', '/ai/request', '/ai/status', '/tasks/approve', '/files/download', '/ai/summarize'):
                     owner = service.user(token)
+                    if path == '/ai/status' and method == 'GET':
+                        from .model_status import status
+                        return self.send(200,status(owner))
+                    if path == '/tasks/approve' and method == 'POST':
+                        from .workflows import approve
+                        return self.send(200,approve(service,owner,body.get('id'),body.get('grant_id')))
+                    if path == '/files/download' and method == 'POST':
+                        return self.send(200,service.download_transfer(owner,body.get('id')))
                     if path == '/devices' and method == 'GET':
-                        return self.send(200, {'devices': service.devices(owner)})
+                        return self.send(200, {'devices': [{**d,**service.jobs.catalog(owner,d['id'])} for d in service.devices(owner)]})
                     if path == '/pairing' and method == 'POST':
                         return self.send(200, service.pairing(owner))
                     if path == '/mail' and method == 'POST':
-                        if body.get('kind') not in ('place', 'companion'):
+                        if body.get('kind') not in ('place', 'companion', 'apps_request', 'open_app', 'parked'):
                             raise ApiError(400, 'Unsupported phone message.')
                         return self.send(200, service.enqueue(owner, identifier(body.get('device_id')), body['kind'], body.get('payload', {}), body.get('id')))
                     if path == '/unpair' and method == 'POST':
@@ -143,7 +162,16 @@ def make_handler(service):
                         id = identifier(body.get('device_id'))
                         service.owned(owner, id)
                         return self.send(200, service.acknowledge(owner, id, body.get('ids', []), phone=True))
+                    if path == '/ai/summarize' and method == 'POST':
+                        from .model_summary import summarize
+                        return self.send(200,summarize(service,owner,body))
+                    if path == '/ai/request' and method == 'POST':
+                        from .model_requests import create
+                        return self.send(200,create(service,owner,body))
                     if path == '/tasks' and method == 'POST':
+                        from .workflows import REVIEW
+                        if body.get('kind') in REVIEW and body.get('confirmed') is not True:
+                            raise ApiError(400,'Review and confirm this exact action first.')
                         return self.send(200, service.create_task(
                             owner, body.get('device_id'), body.get('session_id'),
                             body.get('kind'), body.get('input', {})))
@@ -162,7 +190,7 @@ def make_handler(service):
                         return self.send(200, service.upload_artifact(
                             owner, body.get('device_id'), body.get('session_id'),
                             body.get('name'), body.get('content_base64'),
-                            body.get('purpose')))
+                            body.get('purpose'),body.get('grant_id')))
                 if method == 'GET' and self.static(path):
                     return
                 self.send(404, {'error': 'Not found'})

@@ -7,6 +7,7 @@ final class TopAlignedClipView: NSClipView { override var isFlipped: Bool { true
 /// Companion panels use native semantic colors and AppKit controls in both appearances.
 final class CompanionPanels: NSObject {
     let emit: ([String:Any])->Void
+    var applications: NSWindow?
     var permissions: NSWindow?
     var welcome: NSWindow?
     var settings: [String:Any] = [:]
@@ -62,7 +63,21 @@ final class CompanionPanels: NSObject {
     func handle(_ command:String,payload:String) {
         guard let data = payload.data(using:.utf8),let value = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else{return}
         if command == "permissions" { settings = value;showPermissions() }
+        if command == "applications" { settings = value;showApplications() }
         if command == "welcome" {showWelcome(value)}
+        if command == "approval" {
+            let alert = NSAlert();alert.messageText = "Approve Pico action?"
+            let tool = value["tool"] as? String ?? "Action"
+            let folder = value["folder"] as? String ?? ""
+            let args = value["arguments"] as? [String:Any] ?? [:]
+            let raw = (try? JSONSerialization.data(withJSONObject:args,options:[.prettyPrinted,.sortedKeys])) ?? Data()
+            alert.informativeText = "\(tool)\nFolder: \(folder)\n\nCommands run as your user account. Review the exact action below."
+            let scroll = NSScrollView(frame:NSRect(x:0,y:0,width:480,height:220));scroll.hasVerticalScroller = true
+            let text = NSTextView(frame:scroll.bounds);text.isEditable = false;text.font = .monospacedSystemFont(ofSize:12,weight:.regular);text.string = String(data:raw,encoding:.utf8) ?? "";scroll.documentView = text;alert.accessoryView = scroll
+            alert.addButton(withTitle:"Cancel");alert.addButton(withTitle:"Approve once")
+            let allowed = alert.runModal() == .alertSecondButtonReturn
+            emit(["action":"task_approval","id":value["id"] as? String ?? "","allowed":allowed])
+        }
         if command == "notice" {let alert = NSAlert();alert.messageText = value["message"] as? String ?? "Pico";alert.runModal()}
     }
     func showPermissions() {
@@ -94,7 +109,7 @@ final class CompanionPanels: NSObject {
         let apps = section("Never snapshot these apps",exclusions)
         let retention = NSPopUpButton();retention.addItems(withTitles:["1 day","7 days","30 days"]);retention.selectItem(at:[1,7,30].firstIndex(of:settings["retention_days"] as? Int ?? 7) ?? 1);retention.target = self;retention.action = #selector(changeRetention(_:))
         let files = section("Snapshots folder",[label("Pictures / PICO Places",size:12),stack([label("Keep finished snapshots for",size:12),retention],vertical:false),stack([button("Open folder",#selector(openFolder)),button("Clear snapshots…",#selector(clearSnapshots))],vertical:false)])
-        for view in [title,subtitle,hold,head,apps,files] {body.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
+        for view in [title,subtitle,appAccessSection(),folderAccessSection(),hold,head,apps,files] {body.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
         let paired = settings["paired"] as? Bool ?? false
         var connection:[NSView] = [label(paired ? "Paired with your account" : "No phone paired",size:13)]
         if paired {connection.append(button("Unpair…",#selector(unpair)))}

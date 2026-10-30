@@ -40,6 +40,10 @@ def _fake_response(content: str):
 
 class PlannerTests(unittest.TestCase):
 
+    def setUp(self):
+        guard=patch("server.agent.planner.authorize")
+        guard.start();self.addCleanup(guard.stop)
+
     def _plan_with(self, content: str) -> dict:
         payload = {"choices": [{"message": {"content": content}}]}
 

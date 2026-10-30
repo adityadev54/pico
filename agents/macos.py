@@ -7,11 +7,11 @@ from pathlib import Path
 from paths import resource_root
 OS='macos'
 
-def context(snapshot=None):
+def context(snapshot=None, excluded_apps=None):
     binary = resource_root()/'native/macos_context' if getattr(sys, 'frozen', False) else Path(__file__).parent/'native/macos_context'
     if not binary.exists():
         return {'idle':0, 'app':'Unknown app', 'screen_access':False}
-    args = [str(binary)] + (['snapshot', str(snapshot)] if snapshot else [])
+    args = [str(binary)] + (['snapshot', str(snapshot), json.dumps(excluded_apps or [])] if snapshot else [])
     result = subprocess.run(args,capture_output=True,text=True,timeout=10,check=True)
     return json.loads(result.stdout)
 
@@ -37,6 +37,11 @@ def configure_window(root):
     root.wm_attributes('-transparent',True)
     return 'systemTransparent'
 
+def open_app(bundle):
+    if bundle and all(c.isalnum() or c in '.-_' for c in bundle):
+        return subprocess.run(['/usr/bin/open', '-b', bundle], capture_output=True, timeout=15).returncode == 0
+    return False
+
 def reopen(bundle):
     if bundle and all(c.isalnum() or c in '.-_' for c in bundle):
         subprocess.Popen(['/usr/bin/open','-b',bundle])
@@ -58,10 +63,10 @@ def start_overlay(events):
                 try:
                     value = json.loads(action)
                     if value.get('action') == 'pair':events.put(('native_pair',value.get('code','')))
-                    elif value.get('action') in ('preferences','place_action','open_place','clear_snapshots','pause','unpair'):events.put(('native_panel',value))
+                    elif value.get('action') in ('preferences','place_action','open_place','clear_snapshots','pause','unpair','open_app','permissions','task_approval'):events.put(('native_panel',value))
                 except (ValueError, TypeError):pass
                 continue
-            if action in ('permissions', 'parked', 'unpair', 'quit'):
+            if action in ('permissions', 'applications', 'parked', 'unpair', 'quit'):
                 events.put(('overlay_action', action))
     threading.Thread(target=actions, daemon=True).start()
     return process

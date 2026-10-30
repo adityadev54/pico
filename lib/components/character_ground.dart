@@ -1,5 +1,7 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
 
 /// A quiet pool of blue-hour light and contact shadow anchors each character.

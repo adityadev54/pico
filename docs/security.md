@@ -1,8 +1,6 @@
 # Security and privacy
 
-Audited 2026-10-29 for the 1.0.0 production pass. No secrets were found in
-the repo (see verification below); the gaps at the bottom are accepted and
-owned, not silent.
+Integration notes checked 2026-10-29. Automated checks use synthetic data and mocked model calls. Physical Windows UI testing remains; this is a development release.
 
 ## What is enforced where
 
@@ -15,8 +13,8 @@ owned, not silent.
 | Cancellation | Terminal states never leave; late results are acknowledged but ignored |
 | File transfer | ≤1 MB, base64 over HTTPS, digest-verified before storage and again at phone receipt |
 | Native search | Folder-grant scoped; explicit-but-unresolvable grants fail closed (`agents/native_search.py`) |
-| Transport | Fly `force_https`; desktop client requires HTTPS except localhost or explicit `PICO_ALLOW_LAN=1`; agent server binds 127.0.0.1 only |
-| Database access | Phone JWT: own `tasks` (read), own `handoffs` (read/insert), own `pico-transfers/` paths; everything else is service-key-only (`supabase/migrations/`) |
+| Transport | Fly `force_https`; desktop client requires HTTPS except localhost or explicit `PICO_ALLOW_LAN=1`; optional local tool server binds 127.0.0.1, requires PICO_AGENT_TOKEN, and rejects browser Origin requests |
+| Database access | Phone JWT reads owned tasks. Transfers go through authenticated relay routes and private `pico-uploads` objects; privileged Supabase credentials remain server-only. Verify database policies on the configured shared project; migrations are not included here. |
 | Logs | Relay access lines carry method/path/status/ms only — no query, codes, tokens, or user text (`relay/app.py` `access_line`); agent server logs nothing per request |
 
 ## Secrets handling
@@ -44,7 +42,7 @@ owned, not silent.
 
 ## Dev-only switches (never set in production)
 
-- `PICO_ALLOW_LOCAL_AUTH=1` (agent server trusts any bearer token as an owner)
+- `PICO_ALLOW_LOCAL_AUTH=1` (legacy local backend only; never enable on a hosted service)
 - `PICO_ALLOW_LAN=1` (desktop client allows plain-HTTP LAN relays)
 - `PICO_SEARCH_ROOTS` (extra search folders for the desktop helper)
 
@@ -59,7 +57,7 @@ owned, not silent.
    appears: per-token mail/task quotas in `RelayState`.
 3. **Helper version is not reported.** The phone tolerates missing
    `helper_version`; outdated-helper warnings only fire when the column is
-   set. Recommended follow-up: companion reports its version on poll.
+   set. The supported workflow path also checks the reported capability catalog. Recommended follow-up: companion reports its version on poll.
 4. **Docker image tag floats.** `relay/Dockerfile` pins `python:3.12-slim`
    by tag, not digest (no network to resolve a digest at audit time).
    Pin a digest at release: record it in the release notes.

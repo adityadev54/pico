@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:kin_ui/kin_ui.dart';
+
 import '../services/pico_store.dart';
 import 'section_group.dart';
 import 'character_picker.dart';

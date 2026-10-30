@@ -47,7 +47,7 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         content.addSubview(reply)
         window.contentView = content
         let menu = NSMenu()
-        for (title, action) in [("Permissions…", "permissions"), ("Parked Places", "parked"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
+        for (title, action) in [("Open apps…", "applications"), ("Permissions…", "permissions"), ("Parked Places", "parked"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
             let item = NSMenuItem(title: title, action: #selector(selectAction(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = action; menu.addItem(item)
         }
@@ -68,7 +68,7 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         }
     }
     func update(_ value: [String: String]) {
-        if let command = value["command"], ["permissions","welcome","notice"].contains(command) { panels.handle(command,payload:value["payload"] ?? "{}");return }
+        if let command = value["command"], ["permissions","applications","welcome","notice","approval"].contains(command) { panels.handle(command,payload:value["payload"] ?? "{}");return }
         if value["command"] == "pairing" { showPairing(); return }
         if value["command"] == "pair_status" {
             message.stringValue = value["message"] ?? ""

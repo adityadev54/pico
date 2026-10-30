@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><Compile Include="../../agents/native/windows/AppAccessSettings.cs" Link="AppAccessSettings.cs" /><Compile Include="../../agents/native/windows/SafeTaskExecution.cs" Link="SafeTaskExecution.cs" /></ItemGroup>
+</Project>

@@ -83,6 +83,7 @@ def search_documents(query: str, grants: list[dict] | None = None) -> list[dict]
                 for name in filenames:
                     if query in name.lower():
                         full = Path(dirpath) / name
+                        if full.is_symlink():continue
                         try:
                             size = full.stat().st_size
                         except OSError:

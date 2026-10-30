@@ -175,7 +175,7 @@ def organize_photos_handler(args, ctx):
                 continue
             try:
                 already.setdefault(
-                    hashlib.sha256(child.read_bytes()).hexdigest(), child.name)
+                    digest_of(child), child.name)
             except OSError:
                 pass
     found = []
@@ -184,6 +184,7 @@ def organize_photos_handler(args, ctx):
         dirnames[:] = [d for d in dirnames
                        if not d.startswith('.')
                        and (here / d).resolve() != target]
+        dirnames[:] = [d for d in dirnames if not (here/d).is_symlink()]
         for filename in filenames:
             if filename.startswith('.'):
                 continue
@@ -197,8 +198,9 @@ def organize_photos_handler(args, ctx):
     seen, copied, unreadable, truncated = set(), [], 0, False
     duplicates = 0
     for candidate in found:
+        if ctx.get('cancelled',lambda:False)():raise NativeError('cancelled','Photo copying cancelled. Completed copies are retained.')
         try:
-            digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            digest = digest_of(candidate)
         except OSError:
             unreadable += 1
             continue
@@ -305,6 +307,8 @@ def open_document_handler(args, ctx):
         detail = f'Found {len(matches)} matches' + (f' ({sample})' if sample else '')
         raise NativeError('no_match', detail + '; be more specific.')
     path = resolve_candidate(matches[0]['candidate_id'], grants)
+    if ctx.get('connected') and path.suffix.lower() not in ('.txt','.md','.pdf','.docx','.xlsx','.pptx','.csv','.png','.jpg'):
+        raise NativeError('permission_denied','Only document and image types can be opened in this workflow.')
     (ctx.get('open_file') or default_open_file)(str(path))
     return ({'name': path.name[:120],
              'candidate_id': matches[0]['candidate_id']},

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:heroicons/heroicons.dart';
+
 import '../models/session.dart';
 import 'floating_surface.dart';
 import 'chat_bubble_shape.dart';

@@ -5,6 +5,7 @@ import '../components/screen_chrome.dart';
 import '../components/section_group.dart';
 import '../components/pico_dialog.dart';
 import '../services/pico_store.dart';
+import 'apps_screen.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key, required this.store});
@@ -36,6 +37,22 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
                   ),
                 ),
+                SectionGroup(
+                  title: 'App access',
+                  children: [
+                    SettingsRow(
+                      icon: HeroIcons.window,
+                      title: 'Open approved apps',
+                      subtitle: 'Choose allowed apps on your computer',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => AppsScreen(store: widget.store),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SectionGroup(
                   title: 'Hold my place',
                   children: [
@@ -57,18 +74,18 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     ),
                   ],
                 ),
-                const SectionGroup(
-                  title: 'Head start',
+                SectionGroup(
+                  title: 'Muse',
                   children: [
                     SettingsRow(
                       icon: HeroIcons.pencilSquare,
-                      title: 'Prepare my next step',
-                      subtitle: 'Muse Spark not connected',
+                      title: 'Connection',
+                      subtitle: widget.store.museLabel,
                     ),
                     SettingsRow(
                       icon: HeroIcons.photo,
-                      title: 'Send the snapshot to Muse',
-                      subtitle: 'Requires permission on your computer',
+                      title: 'Selected summaries only',
+                      subtitle: 'No automatic summaries or snapshot uploads',
                     ),
                     SettingsRow(
                       icon: HeroIcons.arrowTopRightOnSquare,
@@ -83,7 +100,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     SettingsRow(
                       icon: HeroIcons.lockClosed,
                       title: 'Manage on your computer',
-                      subtitle: 'Blocked apps use your sentence only',
+                      subtitle: 'Choose exclusions on your computer. Opening an app does not grant snapshot access.',
                     ),
                   ],
                 ),

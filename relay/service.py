@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
+from .task_records import view as task_view
 
 CHARACTERS = ('tuck', 'mica')
 SIZES = ('small', 'medium', 'large')
@@ -80,6 +81,8 @@ class PicoService:
     def __init__(self, database, state):
         self.db, self.state = database, state
         self.lock = threading.RLock()
+        from .job_state import JobState
+        self.jobs = JobState(state)
         from .mailbox import Mailbox, Uploads
         self.mail = Mailbox(database)
         self.mail.ensure()
@@ -165,16 +168,22 @@ class PicoService:
 
     def enqueue(self, owner, device_id, kind, payload, id=None, phone=False):
         self.owned(owner, device_id)
-        if kind not in ('place', 'companion', 'idle', 'head_start', 'parked', 'tool_call', 'tool_result', 'cancel'):
+        from .app_messages import APP_KINDS, app_payload
+        if kind not in ('place', 'companion', 'idle', 'head_start', 'parked', 'tool_call', 'tool_result', 'cancel') and kind not in APP_KINDS:
             raise ApiError(400, 'Unsupported Pico message.')
+        if kind in APP_KINDS:
+            try: payload = app_payload(kind, payload)
+            except (ValueError, KeyError, TypeError): raise ApiError(400, 'Invalid approved-app message.') from None
+        if kind == 'tool_call':
+            payload={**payload,'expires_at':str(int(datetime.now(timezone.utc).timestamp()*1000)+60000)}
         allowed = {'place_id', 'sentence', 'character', 'size', 'app', 'head_start', 'mood', 'mood_until',
                    'task_id', 'tool', 'call_id', 'status', 'error_code', 'query', 'candidate_id',
                    'approval_id', 'url', 'grant_id', 'data_json', 'evidence_json', 'message',
                    'path', 'content', 'base_revision', 'argv_json', 'timeout_s', 'cwd',
-                   'artifact_id', 'folder'}
+                   'artifact_id', 'folder', 'app_id', 'request_id', 'catalog', 'result', 'expires_at', 'expected_digest', 'expected_size'}
         if set(payload)-allowed:
             raise ApiError(400, 'The mailbox accepts short text only. No snapshots.')
-        if any(not isinstance(value, str) or len(value) > 2000 for value in payload.values()):
+        if any(not isinstance(value, str) or len(value) > (6000 if key == 'catalog' else 2000) for key, value in payload.items()):
             raise ApiError(400, 'Keep each message below 2,000 characters.')
         if 'character' in payload and payload['character'] not in CHARACTERS:
             raise ApiError(400, 'Unknown companion.')
@@ -189,6 +198,8 @@ class PicoService:
             raise ApiError(400, 'Unknown character size.')
         if kind == 'tool_call' and payload.get('tool') not in TOOL_NAMES:
             raise ApiError(400, 'Unsupported tool.')
+        if kind == 'parked' and payload.get('status','parked') not in ('parked','ready','finished'):
+            raise ApiError(400, 'Invalid Place status.')
         if kind == 'tool_result' and payload.get('status') not in ('succeeded', 'failed', 'denied'):
             raise ApiError(400, 'Invalid tool result status.')
         id = identifier(id or uuid.uuid4())
@@ -198,13 +209,20 @@ class PicoService:
             return {'id': mail_id, 'status': 'delivered'}
         message = {'kind': kind, 'device_id': device_id, 'payload': payload}
         with self.lock:
-            if kind == 'companion':
+            if kind in ('companion', 'app_catalog'):
                 previous = self.mail.list(owner, device_id, phone)
-                self.mail.delete(owner, device_id, [m['id'] for m in previous if m['kind'] == 'companion'], phone)
+                self.mail.delete(owner, device_id, [m['id'] for m in previous if m['kind'] == kind], phone)
             self.mail.put(owner, device_id, mail_id, message, phone)
         return {'id': mail_id, 'status': 'queued'}
 
     def mailbox(self, owner, device_id, phone=False):
+        if not phone:
+            from .workflows import dispatch
+            for payload in self.jobs.pending(owner,device_id):
+                rows=self.db.db('tasks',{'id':'eq.'+payload['task_id'],'user_id':'eq.'+owner})
+                if not rows or rows[0]['status'] in ('cancelled','completed','failed'):
+                    self.jobs.stop(payload['task_id']);continue
+                dispatch(self,owner,device_id,payload)
         return self.mail.list(owner, device_id, phone)
 
     def acknowledge(self, owner, device_id, ids, phone=False):
@@ -228,78 +246,22 @@ class PicoService:
         return {'ok': True}
 
     # --- Computer tasks (first integration) ---
-    TASK_KINDS = ('find_document', 'send_file', 'open_website', 'open_app',
-                  'manage_permissions', 'summarize_document', 'create_note',
-                  'receive_upload', 'organize_photos', 'open_document')
-    TOOL_FOR_KIND = {'find_document': 'search_documents', 'send_file': 'transfer_selected_file',
-                     'open_website': 'open_website', 'open_app': 'open_app',
-                     'manage_permissions': 'manage_permissions', 'summarize_document': 'read_back_file',
-                     'create_note': 'fs_write', 'receive_upload': 'fetch_upload',
-                     'organize_photos': 'organize_photos', 'open_document': 'open_document'}
+    def task_session(self, owner, session_id):
+        identity=identifier(session_id) if session_id else str(uuid.uuid4())
+        existing=self.db.db('sessions',{'id':'eq.'+identity,'user_id':'eq.'+owner})
+        if not existing:
+            try:
+                self.db.db('sessions',body={'id':identity,'user_id':owner,'title':'Pico request','turns':[]},method='POST')
+            except urllib.error.HTTPError as error:
+                if error.code==409:
+                    existing=self.db.db('sessions',{'id':'eq.'+identity,'user_id':'eq.'+owner})
+                    if existing:return identity
+                raise ApiError(409,'Couldn’t sync this chat. Start a new chat and try again.') from None
+        return identity
 
     def create_task(self, owner, device_id, session_id, kind, input):
-        device = self.owned(owner, identifier(device_id))
-        if kind not in self.TASK_KINDS:
-            raise ApiError(400, 'Unsupported request.')
-        if not isinstance(input, dict):
-            raise ApiError(400, 'Invalid request.')
-        if device.get('helper_version') not in (None, '0.2.0', '0.3.0'):
-            pass  # Old helpers still get text tasks; phone warns on open_app/permissions.
-        tool = self.TOOL_FOR_KIND[kind]
-        payload = {'task_id': str(uuid.uuid4()), 'tool': tool}
-        if tool == 'search_documents':
-            query = str(input.get('query', ''))[:500]
-            if not query.strip():
-                raise ApiError(400, 'What should I search for?')
-            payload['query'] = query
-        elif tool == 'transfer_selected_file':
-            for key in ('candidate_id', 'approval_id'):
-                value = str(input.get(key, ''))
-                if not value:
-                    raise ApiError(400, 'Select and approve a file first.')
-                payload[key] = value[:128]
-        elif tool == 'open_website':
-            url = str(input.get('url', ''))[:2000]
-            if not url.startswith(('https://', 'http://')):
-                raise ApiError(400, 'Invalid website address.')
-            payload['url'] = url
-        elif tool == 'open_app':
-            payload['app'] = str(input.get('app', ''))[:64] or 'browser'
-        elif tool == 'fs_write':
-            payload['path'] = clean_note_name(input.get('name', ''))
-            payload['content'] = str(input.get('text', ''))[:2000]
-        elif tool == 'fetch_upload':
-            artifact = str(input.get('artifact_id', ''))
-            if not re.fullmatch(r'[0-9a-f]{64}', artifact):
-                raise ApiError(400, 'Invalid artifact reference.')
-            payload['artifact_id'] = artifact
-            payload['path'] = clean_note_name(input.get('name', ''))
-        elif tool == 'organize_photos':
-            payload['folder'] = clean_note_name(input.get('folder', ''))
-        elif tool == 'open_document':
-            query = str(input.get('query', ''))[:500]
-            if not query.strip():
-                raise ApiError(400, 'Name a document to open.')
-            payload['query'] = query
-        try:
-            rows = self.db.db('tasks', body={
-                'user_id': owner, 'device_id': device['id'],
-                'session_id': str(session_id or '')[:128] or None,
-                'kind': kind, 'input': input, 'status': 'queued',
-            }, method='POST')
-        except urllib.error.HTTPError as error:
-            if error.code in (400, 404):
-                raise ApiError(503, 'Tasks are not available in this project yet.') from None
-            raise
-        task = rows[0] if isinstance(rows, list) and rows else {'id': payload['task_id']}
-        payload['task_id'] = task.get('id', payload['task_id'])
-        payload['call_id'] = str(uuid.uuid4())
-        try:
-            self.enqueue(owner, device['id'], 'tool_call', payload, payload['call_id'])
-        except ApiError:
-            # Task row stays queued; computer picks it up on next poll retry.
-            pass
-        return task
+        from .workflows import create
+        return create(self,owner,device_id,session_id,kind,input)
 
     def cancel_task(self, owner, task_id):
         """Shared cancel path (A13): stop queued calls, signal running work,
@@ -307,7 +269,8 @@ class PicoService:
         rows = self.db.db('tasks', {'id': 'eq.'+identifier(task_id), 'user_id': 'eq.'+owner})
         if not rows:
             raise ApiError(404, 'Request not found.')
-        task = rows[0]
+        task = task_view(rows[0])
+        self.jobs.stop(task['id'])
         if task.get('status') in ('completed', 'failed', 'cancelled'):
             return {'ok': True}
         removed, notified = 0, False
@@ -340,7 +303,7 @@ class PicoService:
         rows = self.db.db('tasks', {'id': 'eq.'+identifier(task_id), 'user_id': 'eq.'+owner})
         if not rows:
             raise ApiError(404, 'Request not found.')
-        task = rows[0]
+        task = task_view(rows[0])
         if task.get('status') in ('completed', 'failed', 'cancelled'):
             raise ApiError(409, 'That request already finished; start a new note.')
         if task.get('kind') != 'create_note':
@@ -366,7 +329,7 @@ class PicoService:
 
     UPLOAD_LIMIT = 1024 * 1024
 
-    def upload_artifact(self, owner, device_id, session_id, name, content_base64, purpose):
+    def upload_artifact(self, owner, device_id, session_id, name, content_base64, purpose, grant_id=None):
         """Phone uploads bytes for one computer (B07). The artifact id is the
         content digest, so retries dedupe instead of duplicating; objects live
         under the owner's prefix, so owners can never switch or read across."""
@@ -385,7 +348,7 @@ class PicoService:
             'content_base64': base64.b64encode(raw).decode(),
             'digest': digest_value, 'name': filename, 'size_bytes': len(raw)})
         task = self.create_task(owner, device['id'], session_id, 'receive_upload',
-                                {'artifact_id': digest_value, 'name': filename})
+                                {'artifact_id': digest_value, 'name': filename,**({'grant_id':grant_id} if grant_id else {})})
         return {'artifact_id': digest_value, 'size_bytes': len(raw),
                 'digest': digest_value, 'task_id': task['id'],
                 'duplicate': duplicate}
@@ -409,6 +372,10 @@ class PicoService:
         if not rows:
             raise ApiError(404, 'Request not found.')
         result = rows[0].get('result') or {}
+        artifact=result.get('artifact_id')
+        if artifact:
+            result.pop('artifact_id',None)
+            self.db.db('tasks',{'id':'eq.'+rows[0]['id']},{'result':result},'PATCH')
         path = result.get('file_path')
         if path:
             try:
@@ -424,55 +391,35 @@ class PicoService:
         return {'ok': True}
 
     def upload_transfer(self, owner, device_id, body):
-        """Computer uploads exact approved file bytes (base64, <=1MB).
+        from server.verification.checks import check_exact_file
+        rows=self.db.db('tasks',{'id':'eq.'+identifier(body.get('task_id')),'user_id':'eq.'+owner,'device_id':'eq.'+device_id})
+        if not rows:raise ApiError(404,'Request not found.')
+        task=task_view(rows[0])
+        if task['status'] in ('cancelled','completed','failed'):return {'ok':True,'ignored':True}
+        if task['kind']!='send_file':raise ApiError(400,'Not a transfer request.')
+        candidate=task['input'].get('candidate',{})
+        try:
+            raw=base64.b64decode(body.get('content_base64',''),validate=True)
+            if not 0<len(raw)<=1048576 or len(raw)!=body.get('size_bytes') or hashlib.sha256(raw).hexdigest()!=body.get('digest'):raise ValueError()
+            if body.get('approval_id')!=task['input'].get('approval_id'):raise ValueError()
+            check_exact_file(candidate,task['input'],body)
+        except Exception:raise ApiError(400,'The file changed or does not match your approval.') from None
+        artifact=hashlib.sha256(raw).hexdigest()
+        name=candidate.get('name','file')
+        self.uploads.put(owner,artifact,{'content_base64':base64.b64encode(raw).decode(),'digest':artifact,'size_bytes':len(raw),'name':name})
+        result={**(task.get('result') or {}),'artifact_id':artifact,'name':name,'size_bytes':len(raw),'digest':artifact}
+        self.db.db('tasks',{'id':'eq.'+task['id']},{'status':'working','result':result},'PATCH')
+        return {'ok':True}
 
-        Relay validates size/digest, stores in pico-transfers via service key,
-        and marks the send_file task awaiting authenticated phone receipt.
-        """
-        import base64
-
-        task_id = str(body.get('task_id', ''))
-        rows = self.db.db('tasks', {'id': 'eq.'+identifier(task_id), 'user_id': 'eq.'+owner})
-        if not rows:
-            raise ApiError(404, 'Request not found.')
-        task = rows[0]
-        if task.get('status') in ('cancelled', 'completed', 'failed'):
-            return {'ok': True, 'ignored': True}
-        if task.get('kind') != 'send_file':
-            raise ApiError(400, 'Not a transfer task.')
-        try:
-            raw = base64.b64decode(body.get('content_base64', ''), validate=True)
-        except Exception:
-            raise ApiError(400, 'Invalid file content.') from None
-        if len(raw) > 1024 * 1024 or len(raw) == 0:
-            raise ApiError(400, 'File must be 1 byte to 1 MB for demo transfer.')
-        size, digest_value = int(body.get('size_bytes', -1)), str(body.get('digest', ''))
-        if size != len(raw) or digest_value != hashlib.sha256(raw).hexdigest():
-            raise ApiError(400, 'File changed before transfer.')
-        name = str(body.get('name', 'file'))[:120] or 'file'
-        storage_path = f'{owner}/{task["id"]}/{uuid.uuid4().hex[:8]}_{name}'.replace(' ', '_')
-        try:
-            self.db.request('/storage/v1/object/pico-transfers/' + storage_path, None, 'POST')
-        except urllib.error.HTTPError:
-            pass  # Bucket may need creation; upload below creates the object.
-        # Raw binary upload via service key.
-        import urllib.request as urlrequest
-        req = urlrequest.Request(
-            self.db.url + '/storage/v1/object/pico-transfers/' + storage_path,
-            data=raw, method='POST',
-            headers={'apikey': self.db.key, 'Authorization': 'Bearer ' + self.db.key,
-                     'Content-Type': 'application/octet-stream'})
-        try:
-            with urlrequest.urlopen(req, timeout=30):
-                pass
-        except urllib.error.HTTPError as error:
-            raise ApiError(503, 'Could not store the file. Try again.') from error
-        self.db.db('tasks', {'id': 'eq.'+task['id']}, {
-            'status': 'verifying',
-            'result': merge_upload_result(task.get('result'), {
-                'file_path': storage_path, 'name': name,
-                'size_bytes': size, 'digest': digest_value})}, 'PATCH')
-        return {'ok': True, 'file_path': storage_path}
+    def download_transfer(self,owner,identity):
+        rows=self.db.db('tasks',{'id':'eq.'+identifier(identity),'user_id':'eq.'+owner})
+        if not rows:raise ApiError(404,'File not available.')
+        task=task_view(rows[0])
+        if task['status'] not in ('verifying','completed'):raise ApiError(404,'File not available.')
+        result=task.get('result') or {};artifact=result.get('artifact_id')
+        if not artifact:raise ApiError(404,'File not available.')
+        obj=self.uploads.get(owner,artifact)
+        return {**obj,'name':result.get('name','file')}
 
     def submit_receipt(self, owner, body):
         """Authenticated phone acknowledges received size/digest; verifier checks both."""
@@ -482,7 +429,7 @@ class PicoService:
         rows = self.db.db('tasks', {'id': 'eq.'+identifier(task_id), 'user_id': 'eq.'+owner})
         if not rows:
             raise ApiError(404, 'Request not found.')
-        task = rows[0]
+        task = task_view(rows[0])
         if task.get('status') in ('cancelled', 'completed', 'failed'):
             return {'ok': True}
         evidence = task.get('result') or {}
@@ -515,9 +462,11 @@ class PicoService:
             raise ApiError(400, 'Invalid task reference.') from None
         if not rows:
             raise ApiError(404, 'Request not found.')
-        task = rows[0]
+        task = task_view(rows[0])
         if task.get('status') in ('cancelled', 'completed', 'failed'):
             return {'ok': True, 'ignored': True}
+        if task.get('device_id') != device_id:
+            raise ApiError(403,'This request belongs to another computer.')
         status = payload.get('status')
         if status != 'succeeded':
             code = payload.get('error_code', 'timeout')
@@ -534,17 +483,18 @@ class PicoService:
             check_exact_file, check_fs_manifest, check_open_document,
             check_organize_manifest, check_process_result, check_search_outcome)
         kind = task.get('kind')
+        self.jobs.stop(task['id'])
         try:
             if kind == 'find_document':
                 check_search_outcome({'status': 'succeeded', 'data': data})
             elif kind == 'send_file':
-                approved = (task.get('input') or {}).get('candidate_id')
-                check_exact_file({'candidate_id': approved}, {'candidate_id': approved}, evidence)
+                source=task.get('input') or {}
+                check_exact_file(source.get('candidate',{}),source,evidence)
             elif kind in ('fs_list', 'fs_read', 'fs_write', 'create_note',
-                            'receive_upload'):
+                            'receive_upload','edit_file','list_files','read_file'):
                 check_fs_manifest(
-                    data, 'fs_write' if kind in ('create_note', 'receive_upload') else kind)
-            elif kind == 'process_run':
+                    data, 'fs_write' if kind in ('create_note', 'receive_upload','edit_file') else {'list_files':'fs_list','read_file':'fs_read'}.get(kind,kind))
+            elif kind in ('process_run','run_command'):
                 check_process_result(data)
             elif kind == 'organize_photos':
                 check_organize_manifest(data)
@@ -570,7 +520,7 @@ class PicoService:
             if data.get('excerpt'):
                 merged['excerpt'] = str(data['excerpt'])[:1500]
             self.db.db('tasks', {'id': 'eq.'+task['id']}, {
-                'status': 'verifying', 'result': merged}, 'PATCH')
+                'status': 'working', 'result': merged}, 'PATCH')
         elif kind == 'open_document':
             self.db.db('tasks', {'id': 'eq.'+task['id']}, {
                 'status': 'completed',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../services/pico_store.dart';
-import 'pico_sheet.dart';
+import 'pico_dialog.dart';
 
 Future<String?> chooseComputer(
   BuildContext context,
@@ -28,7 +29,7 @@ Future<String?> chooseComputer(
     if (matching.length == 1) return matching.single['id'];
   }
   if (store.devices.length == 1) return store.devices.single['id'];
-  return showPicoSheet<String>(
+  return showPicoDialog<String>(
     context: context,
     builder: (context) => Column(
       mainAxisSize: MainAxisSize.min,

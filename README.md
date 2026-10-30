@@ -11,13 +11,12 @@ Hold a thought. Pick it up on your computer.
 | Android | `.apk` · Android 7+ |
 | iPhone | Safari → Share → Add to Home Screen |
 
-Sign up on your phone, get a connection code, and enter it on your computer.
+Sign up on your phone, get a code, and enter it on your computer.
+Choose allowed apps in the companion’s **Open apps** menu. Choose read-only folders or a write workspace in permissions. Snapshot exclusions are separate.
 
 ## Development
 
-Flutter · Supabase (Auth & Devices) · native desktop helpers.
-
-`agents/` contains desktop helpers, not the AI agent backend. The team’s backend lives in `server/agent/`.
+Flutter · Supabase · native desktop helpers.
 
 ```sh
 flutter pub get
@@ -26,20 +25,15 @@ flutter analyze
 flutter test
 ```
 
-For a local relay, set server-only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then run `sh scripts/run_relay.sh`. An environment file can be supplied with `PICO_ENV_FILE`. Keep secrets out of apps and downloads.
+`agents/` contains desktop helpers. `server/agent/` contains the planner.
+Keep secrets server-only and outside version control.
 
-## Production status (1.0.0)
+## Tasks
 
-Pairing, Places, companion sync, and the document task queue (search →
-exact-file approval → verified transfer) are implemented with 43 Python
-tests and a Flutter suite. Start here for a release:
+Search and read approved folders, send a selected file to your phone, save uploads, create or revise notes, and copy unique photos. File changes require a write workspace and phone approval. Commands also require computer approval. Shell commands are disabled.
 
-- Backend: `supabase/README.md` + `supabase/migrations/`
-- Operations: `docs/runbook.md` (build order, secrets, rollback)
-- Release gates: `docs/qa-matrix.md` (automated + hardware checklist)
-- Security record: `docs/security.md` (enforcement, gaps)
+Muse is account-restricted and opt-in. The connection dot checks access without inference. **Ask Pico:** uses one bounded planning call; summaries run only when requested and confirmed. No automatic summaries or model retries.
 
-Before tagging: run `flutter pub get` (adds `crypto`), the QA gates, and
-`check_connection.py` against production. Head Start stays disabled until
-a model provider is configured. Account deletion is the one documented
-functional gap (see `docs/security.md`).
+AI attempts reserve $0.10 against a shared $1/day and $5 total test allowance. Actual provider billing is separate. Keys stay server-only.
+
+Installers are development builds. Physical Windows UI testing remains. Rebuild the phone and desktop packages together when testing changes from source.

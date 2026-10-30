@@ -6,7 +6,8 @@ import shutil
 import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
-relay=os.environ.get('PICO_RELAY_URL','http://127.0.0.1:8765')
+(ROOT/'downloads').mkdir(exist_ok=True)
+relay=os.environ.get('PICO_RELAY_URL','https://pico-companion.fly.dev')
 config=ROOT/'agents/native/windows/RelayConfig.cs'
 config.write_text('internal static class RelayConfig { internal const string Url = '+json.dumps(relay)+'; }\n')
 output=ROOT/'build/installer-windows'

@@ -97,10 +97,12 @@ def dispatch_to_helper(tool_call: dict, timeout: int = 35) -> dict:
     call_id = tool_call.get("call_id", "")
 
     headers = {"Content-Type": "application/json"}
-    if AGENT_TOKEN:
-        headers["Authorization"] = f"Bearer {AGENT_TOKEN}"
+    # The optional env file is loaded after module imports in the local backend.
+    token = os.environ.get("PICO_AGENT_TOKEN", AGENT_TOKEN)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
-    url = AGENT_URL.rstrip("/") + "/execute"
+    url = os.environ.get("PICO_AGENT_URL", AGENT_URL).rstrip("/") + "/execute"
     req = urllib.request.Request(
         url,
         data=json.dumps(tool_call).encode(),

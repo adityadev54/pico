@@ -6,6 +6,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+class DeviceError(ValueError):
+    def __init__(self,message,status):
+        super().__init__(message);self.status=status
+
 class DeviceClient:
     def __init__(self, base, token='', device_id=''):
         parsed = urllib.parse.urlparse(base)
@@ -23,7 +27,7 @@ class DeviceClient:
                 raise PermissionError('This computer was unpaired.') from None
             try: message = json.load(error)['error']
             except Exception: message = 'Connection unavailable.'
-            raise ValueError(message) from None
+            raise DeviceError(message,error.code) from None
 
     def claim(self, code, os_name, name):
         value = self.post('/claim', {'code':code,'os':os_name,'name':name})

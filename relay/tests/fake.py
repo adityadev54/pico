@@ -18,6 +18,7 @@ class FakeSupabase:
             'pairing_codes': [],
             'agent_credentials': [],
             'tasks': [],
+            'sessions': [],
             'handoffs': [],
         }
         self.objects = {}

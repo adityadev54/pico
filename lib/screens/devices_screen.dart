@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
 
 import '../components/screen_chrome.dart';
+import '../components/workflow_review.dart';
 import '../components/section_group.dart';
 import '../components/pico_dialog.dart';
 import '../components/device_setup.dart';
 import 'account_screen.dart';
+import 'apps_screen.dart';
 import '../services/pico_store.dart';
 import '../services/relay_client.dart';
 
@@ -154,8 +156,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                             : () => _upload(device),
                                       ),
                                       IconButton(
-                                        tooltip:
-                                            'Disconnect ${device['name']}',
+                                        tooltip: 'Disconnect ${device['name']}',
                                         icon: HeroIcon(
                                           HeroIcons.linkSlash,
                                           size: 20,
@@ -168,6 +169,22 @@ class _DevicesScreenState extends State<DevicesScreen> {
                                     ],
                                   ),
                           ),
+                      ],
+                    ),
+                  if (widget.store.linked)
+                    SectionGroup(
+                      title: 'Apps',
+                      children: [
+                        SettingsRow(
+                          icon: HeroIcons.window,
+                          title: 'Open apps',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => AppsScreen(store: widget.store),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   DeviceSetup(
@@ -188,6 +205,13 @@ class _DevicesScreenState extends State<DevicesScreen> {
     ),
   );
   Future<void> _upload(Map<String, dynamic> device) async {
+    final grant = await chooseWorkspace(
+      context,
+      widget.store,
+      device['id'],
+      write: true,
+    );
+    if (grant == null || !mounted) return;
     final picked = await FilePicker.pickFile();
     if (picked == null || !mounted) return;
     setState(() {
@@ -204,6 +228,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
         device['id'],
         picked.name,
         bytes,
+        grant: grant,
       );
       if (!mounted) return;
       if (receipt == null) {
