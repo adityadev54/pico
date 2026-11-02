@@ -192,13 +192,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (store.linked && await dispatchComputerAction(context, store, value)) {
       if (!mounted) return false;
     } else {
+      // Unrecognized command-language still saves (never lose input),
+      // with guidance naming what this build actually supports.
       if (looksLikeCommand(value)) {
         _notice(
           store.linked
-              ? 'Action not started. For a file, try “Create a file called test.txt saying Hello”. For a draft, use “Ask Pico: Draft a three-item checklist into checklist.txt”.'
-              : 'Action not started. Connect a computer in Devices first.',
+              ? 'Saved as a note — Pico can find files, open documents, create notes, organize photos, open apps and websites. Try “find my brief”.'
+              : 'Saved as a note — connect a computer in Devices to run commands.',
         );
-        return false;
       }
       await store.savePlace(value);
       if (!mounted) return false;
