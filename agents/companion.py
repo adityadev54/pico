@@ -130,10 +130,25 @@ class Companion:
     def start_worker(self):
         threading.Thread(target=self.poll,daemon=True).start()
 
+    def adopt_disk_grants(self):
+        """Adopt folder grants written to disk (CLI, popup) without dropping
+        approvals made in this session. Runs every poll so file and memory
+        stop clobbering each other; failures keep the in-memory grants."""
+        try:
+            disk=json.loads(self.state_file.read_text()).get('grants',[])
+        except (OSError,ValueError):
+            return
+        if not isinstance(disk,list):
+            return
+        from grants import merge_grants
+        with self.lock:
+            self.state['grants']=merge_grants(self.state.get('grants',[]),disk)
+
     def poll(self):
         away=False
         while not self.stopped.is_set() and self.client:
             try:
+                self.adopt_disk_grants()
                 client=self.client
                 result=client.post('/agent/poll',{'capabilities':__import__('task_execution').capabilities(self.state)})
                 for message in result['mail']:self.events.put(('mail',message))
@@ -236,7 +251,8 @@ class Companion:
         if previous!=client.device_id and (previous or fresh):
             archive=self.directory/'account-history';archive.mkdir(mode=0o700,exist_ok=True)
             file=archive/(str(uuid.uuid4())+'.json');file.write_text(json.dumps(self.state));os.chmod(file,0o600)
-            for key,empty in [('places',{}),('outgoing',[]),('handled',[]),('task_journal',{}),('grants',[]),('allowed_apps',[])]:self.state[key]=empty
+            from grants import fresh_pair_state
+            self.state=fresh_pair_state(self.state)
             self.acks=[]
         self.state['paired_device']=client.device_id;self.save()
 
@@ -283,6 +299,7 @@ class Companion:
             self.running_tasks[task]=fn
             if cancelled():fn()
         result=execute(payload,self.state,self.platform,lambda:self.events.put(('show_permissions',None)),client=self.client,approve=self.approve_task,cancelled=cancelled,register_cancel=register,unregister_cancel=lambda:self.running_tasks.pop(task,None))
+        if result.get('grant_added'):self.save()
         self.events.put(('presentation',('done' if result['status']=='succeeded' else 'stuck',result.get('message','Request finished.'),None)))
         return result
 

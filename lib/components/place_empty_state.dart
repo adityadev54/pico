@@ -4,6 +4,17 @@ import 'package:heroicons/heroicons.dart';
 import 'character_ground.dart';
 import 'floating_surface.dart';
 
+/// Time-of-day greeting Pico shows when the conversation starts.
+String picoGreeting([DateTime? now]) {
+  final hour = (now ?? DateTime.now()).hour;
+  final part = hour < 12
+      ? 'Good morning'
+      : hour < 17
+      ? 'Good afternoon'
+      : 'Good evening';
+  return "$part, I'm Pico.";
+}
+
 class PlaceEmptyState extends StatelessWidget {
   const PlaceEmptyState({
     super.key,
@@ -53,7 +64,7 @@ class PlaceEmptyState extends StatelessWidget {
                 ),
                 SizedBox(height: 16),
                 Text(
-                  'Hold that thought.',
+                  picoGreeting(),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 28,
@@ -65,7 +76,8 @@ class PlaceEmptyState extends StatelessWidget {
                 if (!typing) ...[
                   SizedBox(height: 8),
                   Text(
-                    'A sentence is enough.',
+                    'Ask me to open apps, find files, organize photos, or convert documents.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,

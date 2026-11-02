@@ -48,9 +48,9 @@ def probe_folders(ctx):
 
 def probe_interpreter(_):
     major, minor = sys.version_info[:2]
-    if (major, minor) < (3, 10):
+    if (major, minor) < (3, 9):
         return {'name': 'interpreter', 'status': 'fail',
-                'detail': f'python {major}.{minor} < 3.10'}
+                'detail': f'python {major}.{minor} < 3.9'}
     return {'name': 'interpreter', 'status': 'pass',
             'detail': platform.python_version()}
 

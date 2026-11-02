@@ -6,6 +6,8 @@ import '../services/pico_store.dart';
 import 'pico_dialog.dart';
 import 'pico_sheet.dart';
 
+// Must match the relay REVIEW set: the relay rejects these kinds with 400
+// unless the phone reviewed them first (confirmed: true).
 const reviewedKinds = {
   'create_note',
   'edit_file',
@@ -14,6 +16,15 @@ const reviewedKinds = {
   'organize_photos',
   'open_website',
   'open_document',
+  'convert_file',
+  'delete_files',
+  'restore_deleted',
+  'pdf_pages',
+  'rename_file',
+  'duplicate_file',
+  'archive',
+  'undo_edit',
+  'empty_trash',
 };
 const writeKinds = {
   'create_note',
@@ -30,6 +41,15 @@ Map<String, dynamic> _reviewDetails(Map<String, dynamic> input) {
     'text': 'Contents',
     'content': 'Contents',
     'folder': 'Destination folder',
+    'to': 'Convert to',
+    'action': 'Action',
+    'new_name': 'New name',
+    'confirm': 'Confirmation',
+    'paths': 'Files',
+    'pages': 'Pages',
+    'angle': 'Angle',
+    'watermark': 'Watermark',
+    'output': 'Output file',
     'argv': 'Command arguments',
     'argv_json': 'Command arguments',
     'cwd': 'Working folder',
@@ -109,9 +129,12 @@ Future<String?> chooseWorkspace(
   bool write = false,
 }) async {
   final row = store.devices.where((d) => d['id'] == device).firstOrNull;
+  // Grant ranks run read < write < delete; each level implies the ones below.
   final workspaces = (row?['workspaces'] as List? ?? [])
       .whereType<Map>()
-      .where((g) => !write || g['access'] == 'write')
+      .where(
+        (g) => !write || g['access'] == 'write' || g['access'] == 'delete',
+      )
       .toList();
   if (workspaces.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(

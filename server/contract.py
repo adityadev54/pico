@@ -68,6 +68,20 @@ SUPPORTED_TOOLS = (
     "fetch_upload",
     "organize_photos",
     "open_document",
+    "convert_file",
+    "delete_files",
+    "restore_deleted",
+    "pdf_pages",
+    "rename_file",
+    "duplicate_file",
+    "archive",
+    "recent_files",
+    "search_contents",
+    "find_duplicates",
+    "largest_files",
+    "undo_edit",
+    "empty_trash",
+    "disk_usage",
 )
 
 

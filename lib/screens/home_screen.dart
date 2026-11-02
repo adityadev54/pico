@@ -188,8 +188,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _dispatch(String value) async {
-    // Supported computer actions run as tasks; other speech stays a Place.
-    if (store.linked && await dispatchComputerAction(context, store, value)) {
+    // Small-talk answers locally, linked or not; supported computer
+    // actions run as tasks; other speech stays a Place.
+    final local = await answerSmallTalk(store, value);
+    if (!mounted) return false;
+    if (local) {
+      // Reply already saved; fall through to scroll.
+    } else if (store.linked &&
+        await dispatchComputerAction(context, store, value)) {
+      // A new computer intent wins over any pending game or question.
+      store.pendingPrompt = null;
+      if (!mounted) return false;
+    } else if (await answerLocalPlay(store, value)) {
       if (!mounted) return false;
     } else {
       // Unrecognized command-language still saves (never lose input),
@@ -197,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (looksLikeCommand(value)) {
         _notice(
           store.linked
-              ? 'Saved as a note — Pico can find files, open documents, create notes, organize photos, open apps and websites. Try “find my brief”.'
+              ? 'Saved as a note — Pico can find files, open documents, create notes, organize photos, convert and delete files, edit PDFs, open apps and websites, play games and set timers. Try “find my brief”.'
               : 'Saved as a note — connect a computer in Devices to run commands.',
         );
       }

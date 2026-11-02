@@ -20,7 +20,11 @@ TOOL_NAMES = ('search_documents', 'transfer_selected_file', 'capture_current_tab
               'create_checklist', 'read_back_file', 'open_resource',
               'open_app', 'open_website', 'manage_permissions',
               'fs_list', 'fs_read', 'fs_write', 'process_run', 'fetch_upload',
-              'organize_photos', 'open_document')
+              'organize_photos', 'open_document', 'convert_file',
+              'delete_files', 'restore_deleted', 'pdf_pages',
+              'rename_file', 'duplicate_file', 'archive', 'recent_files',
+              'search_contents', 'find_duplicates', 'largest_files',
+              'undo_edit', 'empty_trash', 'disk_usage')
 
 
 def stamp():
@@ -180,7 +184,9 @@ class PicoService:
                    'task_id', 'tool', 'call_id', 'status', 'error_code', 'query', 'candidate_id',
                    'approval_id', 'url', 'grant_id', 'data_json', 'evidence_json', 'message',
                    'path', 'content', 'base_revision', 'argv_json', 'timeout_s', 'cwd',
-                   'artifact_id', 'folder', 'app_id', 'request_id', 'catalog', 'result', 'expires_at', 'expected_digest', 'expected_size'}
+                   'artifact_id', 'folder', 'app_id', 'request_id', 'catalog', 'result', 'expires_at', 'expected_digest', 'expected_size', 'to', 'confirm', 'name',
+                   'action', 'paths_json', 'pages', 'angle', 'text', 'password', 'output',
+                   'new_name', 'days', 'limit'}
         if set(payload)-allowed:
             raise ApiError(400, 'The mailbox accepts short text only. No snapshots.')
         if any(not isinstance(value, str) or len(value) > (6000 if key == 'catalog' else 2000) for key, value in payload.items()):
@@ -470,8 +476,11 @@ class PicoService:
         status = payload.get('status')
         if status != 'succeeded':
             code = payload.get('error_code', 'timeout')
+            message = payload.get('message', '')
+            message = message[:300] if isinstance(message, str) else ''
             self.db.db('tasks', {'id': 'eq.'+task['id']},
-                       {'status': 'failed', 'result': {'error_code': code[:64]}}, 'PATCH')
+                       {'status': 'failed',
+                        'result': {'error_code': code[:64], 'message': message}}, 'PATCH')
             return {'ok': True}
         try:
             data = json.loads(payload.get('data_json', '{}') or '{}')
@@ -480,8 +489,10 @@ class PicoService:
             raise ApiError(400, 'Invalid tool data.') from None
         from server.contract import ContractError
         from server.verification.checks import (
-            check_exact_file, check_fs_manifest, check_open_document,
-            check_organize_manifest, check_process_result, check_search_outcome)
+            check_count_report, check_delete_manifest, check_duplicate_groups,
+            check_exact_file, check_fs_manifest, check_named_entries,
+            check_open_document, check_organize_manifest, check_process_result,
+            check_search_outcome)
         kind = task.get('kind')
         self.jobs.stop(task['id'])
         try:
@@ -491,15 +502,38 @@ class PicoService:
                 source=task.get('input') or {}
                 check_exact_file(source.get('candidate',{}),source,evidence)
             elif kind in ('fs_list', 'fs_read', 'fs_write', 'create_note',
-                            'receive_upload','edit_file','list_files','read_file'):
+                            'receive_upload','edit_file','list_files','read_file',
+                            'convert_file'):
                 check_fs_manifest(
-                    data, 'fs_write' if kind in ('create_note', 'receive_upload','edit_file') else {'list_files':'fs_list','read_file':'fs_read'}.get(kind,kind))
+                    data, 'fs_write' if kind in ('create_note', 'receive_upload','edit_file','convert_file') else {'list_files':'fs_list','read_file':'fs_read'}.get(kind,kind))
             elif kind in ('process_run','run_command'):
                 check_process_result(data)
             elif kind == 'organize_photos':
                 check_organize_manifest(data)
             elif kind == 'open_document':
                 check_open_document(data)
+            elif kind == 'delete_files':
+                check_delete_manifest(data)
+            elif kind == 'restore_deleted':
+                check_fs_manifest({'path': data.get('restored'), 'size_bytes': data.get('size_bytes'),
+                                   'digest': data.get('digest')}, 'fs_write')
+            elif kind in ('rename_file', 'duplicate_file', 'undo_edit'):
+                check_fs_manifest(data, 'fs_write')
+            elif kind == 'archive':
+                if (task.get('input') or {}).get('action') == 'extract':
+                    check_named_entries(data, 'files')
+                else:
+                    check_fs_manifest(data, 'fs_write')
+            elif kind in ('recent_files', 'largest_files'):
+                check_named_entries(data, 'files')
+            elif kind == 'search_contents':
+                check_named_entries(data, 'matches')
+            elif kind == 'find_duplicates':
+                check_duplicate_groups(data)
+            elif kind == 'disk_usage':
+                check_count_report(data, ('total_bytes', 'file_count'))
+            elif kind == 'empty_trash':
+                check_count_report(data, ('emptied_count', 'freed_bytes'))
             # open_website/open_app/manage_permissions/read_back_file carry no
             # checkable evidence; a succeeded report completes them.
         except ContractError as failed:
@@ -526,6 +560,22 @@ class PicoService:
                 'status': 'completed',
                 'result': {'evidence': evidence, **data,
                            'message': f'Opened {data.get("name")} on your computer.'}}, 'PATCH')
+        elif kind == 'convert_file':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Converted to {data.get("path")}.'}}, 'PATCH')
+        elif kind == 'delete_files':
+            names = ', '.join(data.get('trashed', [])[:5])
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Moved to Pico trash: {names}. Say "restore {names}" to undo.'}}, 'PATCH')
+        elif kind == 'restore_deleted':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Restored {data.get("restored")}.'}}, 'PATCH')
         elif kind == 'organize_photos':
             copied, dupes = data.get('copied_count', 0), data.get('duplicates_skipped', 0)
             self.db.db('tasks', {'id': 'eq.'+task['id']}, {
@@ -533,6 +583,64 @@ class PicoService:
                 'result': {'evidence': evidence, **data,
                            'message': f'Gathered {copied} photo(s) into {data.get("folder")}; '
                                       f'skipped {dupes} duplicate(s). Originals untouched.'}}, 'PATCH')
+        elif kind == 'rename_file':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Renamed {data.get("previous")} to {data.get("path")}.'}}, 'PATCH')
+        elif kind == 'duplicate_file':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Copied {data.get("source")} to {data.get("path")}. Original untouched.'}}, 'PATCH')
+        elif kind == 'archive':
+            if (task.get('input') or {}).get('action') == 'extract':
+                message = f'Extracted {data.get("count")} file(s) into {data.get("output")}.'
+            else:
+                message = f'Zipped {data.get("count")} file(s) into {data.get("path")}.'
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data, 'message': message}}, 'PATCH')
+        elif kind == 'recent_files':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'{data.get("found")} file(s) changed in the last {data.get("days")} day(s).'}}, 'PATCH')
+        elif kind == 'search_contents':
+            first = (data.get('matches') or [{}])[0].get('name', '')
+            detail = f' First match: {first}.' if first else ''
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'{data.get("found")} file(s) contain that text.{detail}'}}, 'PATCH')
+        elif kind == 'find_duplicates':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'{data.get("found")} duplicate group(s) found.'}}, 'PATCH')
+        elif kind == 'largest_files':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Top {len(data.get("files", []))} largest file(s) listed.'}}, 'PATCH')
+        elif kind == 'undo_edit':
+            if data.get('undone') == 'create':
+                message = f'Undid that create; moved {data.get("path")} to Pico trash (recoverable).'
+            else:
+                message = f'Restored the previous version of {data.get("path")}.'
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data, 'message': message}}, 'PATCH')
+        elif kind == 'empty_trash':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'Emptied Pico trash: {data.get("emptied_count")} file(s), {data.get("freed_bytes")} byte(s) freed.'}}, 'PATCH')
+        elif kind == 'disk_usage':
+            self.db.db('tasks', {'id': 'eq.'+task['id']}, {
+                'status': 'completed',
+                'result': {'evidence': evidence, **data,
+                           'message': f'{data.get("total_bytes")} bytes across {data.get("file_count")} file(s).'}}, 'PATCH')
         else:
             merged = {'evidence': evidence, **data}
             prior = (task.get('result') or {}).get('message')

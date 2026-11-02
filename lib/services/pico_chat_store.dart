@@ -117,6 +117,36 @@ extension PicoChatStore on PicoStore {
     _changed();
   }
 
+  /// Pico's own reply in the conversation. Assistant places render as
+  /// Pico messages and are never delivered to the computer.
+  Future<void> saveAssistantReply(String sentence, {bool force = false}) async {
+    sentence = sentence.trim();
+    if (sentence.isEmpty || (!force && busy)) return;
+    final owner = userId;
+    final chat = await ensureChat(sentence);
+    if (owner != userId) return;
+    final place = Place(
+      chatId: chat.id,
+      id: _uuid(),
+      sentence: sentence,
+      created: DateTime.now(),
+      role: 'assistant',
+      finished: true,
+    );
+    places.insert(0, place);
+    try {
+      await _persist();
+      error = null;
+    } catch (_) {
+      places.remove(place);
+      error = 'Couldn’t save Pico’s reply. Try again.';
+      _changed();
+      return;
+    }
+    _changed();
+    if (composingNewChat) _newChatPlaceIds.add(place.id);
+  }
+
   Future<void> updatePlace(Place place, {bool? parked, bool? finished}) async {
     final i = places.indexWhere((p) => p.id == place.id);
     if (i < 0) return;

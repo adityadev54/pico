@@ -81,6 +81,33 @@ class WorkspaceTests(unittest.TestCase):
         finally:
             outside.unlink(missing_ok=True)
 
+    def test_trash_and_restore_round_trip(self):
+        (self.root / 'old.txt').write_text('bye')
+        manifest = self.ws.trash('old.txt')
+        self.assertEqual(manifest['original'], 'old.txt')
+        self.assertFalse((self.root / 'old.txt').exists())
+        back = self.ws.restore('old.txt')
+        self.assertEqual(back['path'], 'old.txt')
+        self.assertEqual((self.root / 'old.txt').read_text(), 'bye')
+        (self.root / 'old.txt').write_text('newer')
+        self.ws.trash('old.txt')
+        (self.root / 'old.txt').write_text('brand new')
+        back = self.ws.restore('old.txt')
+        self.assertEqual(back['path'], 'old_2.txt')
+        self.assertEqual((self.root / 'old_2.txt').read_text(), 'newer')
+
+    def test_trash_refuses_dirs_missing_and_trash_itself(self):
+        with self.assertRaises(NativeError):
+            self.ws.trash('sub')
+        with self.assertRaises(NativeError):
+            self.ws.trash('missing.txt')
+        (self.root / 'x.txt').write_text('x')
+        self.ws.trash('x.txt')
+        with self.assertRaises(NativeError):
+            self.ws.trash('.pico-trash')
+        with self.assertRaises(NativeError):
+            self.ws.restore('never-trashed.txt')
+
     def test_write_bytes_round_trips_binary(self):
         raw = bytes(range(256)) * 100
         manifest = self.ws.write_bytes('img.jpg', raw)
@@ -100,6 +127,34 @@ class WorkspaceTests(unittest.TestCase):
             self.ws.write('nope/nested.txt', 'x')
         with self.assertRaises(NativeError):
             self.ws.write('ghost.txt', 'x', base_revision='0' * 64)
+
+    def test_write_journals_revisions_for_undo(self):
+        self.ws.write('note.txt', 'v1')
+        out = self.ws.read('note.txt')
+        self.ws.write('note.txt', 'v2', out['digest'])
+        entries = self.ws.journal_entries()
+        self.assertEqual([entry['op'] for _, entry in entries],
+                         ['create', 'revise'])
+        self.assertTrue(all(entry['path'] == 'note.txt' for _, entry in entries))
+        index, revise = entries[1]
+        self.assertTrue(revise['backup'])
+        self.assertEqual((self.root / revise['backup']).read_bytes(), b'v1')
+        self.ws.forget_entry(index)
+        self.assertEqual([entry['op'] for _, entry in self.ws.journal_entries()],
+                         ['create'])
+        self.assertFalse((self.root / revise['backup']).exists())
+
+    def test_journal_normalizes_paths_and_prunes(self):
+        (self.root / 'sub').mkdir(exist_ok=True)
+        self.ws.write('sub/../note.txt', 'v1')
+        entries = self.ws.journal_entries()
+        self.assertEqual([entry['path'] for _, entry in entries], ['note.txt'])
+        for n in range(510):
+            self.ws.note_created(f'f{n}.txt', 'd' * 64)
+        entries = self.ws.journal_entries()
+        self.assertEqual(len(entries), 410)
+        self.assertEqual(entries[0][1]['path'], 'f100.txt')
+        self.assertEqual(entries[-1][1]['path'], 'f509.txt')
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pico/services/pico_store.dart';
 import 'package:pico/screens/home_screen.dart';
 import 'package:pico/components/session_drawer.dart';
+import 'package:pico/components/place_empty_state.dart';
 import 'package:pico/theme/app_theme.dart';
 
 void main() {
@@ -152,7 +153,7 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('Hold that thought.'), findsOneWidget);
+      expect(find.text(picoGreeting()), findsOneWidget);
       expect(tester.getTopLeft(find.byTooltip('Open menu')).dy, lessThan(90));
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('Open menu'));

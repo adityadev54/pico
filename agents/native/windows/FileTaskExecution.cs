@@ -67,7 +67,7 @@ internal static class FileTaskExecution {
     }
     case "open_document": {
      var matches=grants.SelectMany(Files).Where(f=>Path.GetFileName(f).Contains(S(p,"query"),StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();if(matches.Length!=1)throw new InvalidOperationException(matches.Length==0?"no_match":"ambiguous_match");
-     var extensions=new[]{".txt",".md",".pdf",".docx",".xlsx",".pptx",".csv",".png",".jpg"};if(!extensions.Contains(Path.GetExtension(matches[0]).ToLowerInvariant()))throw new InvalidOperationException("permission_denied");Process.Start(new ProcessStartInfo(matches[0]){UseShellExecute=true});data["name"]=Path.GetFileName(matches[0]);data["candidate_id"]=Candidate(matches[0]);evidence["candidate_id"]=Candidate(matches[0]);break;
+     Process.Start(new ProcessStartInfo(matches[0]){UseShellExecute=true});data["name"]=Path.GetFileName(matches[0]);data["candidate_id"]=Candidate(matches[0]);evidence["candidate_id"]=Candidate(matches[0]);break;
     }
     case "open_website": {if(!Uri.TryCreate(S(p,"url"),UriKind.Absolute,out var u)||u.Scheme!="https"||u.UserInfo!="")throw new InvalidOperationException("invalid_args");Process.Start(new ProcessStartInfo(u.AbsoluteUri){UseShellExecute=true});data["url"]=u.AbsoluteUri;break;}
     case "process_run": {

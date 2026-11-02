@@ -165,6 +165,46 @@ class ToolPathTests(unittest.TestCase):
         self.assertTrue(row2['result']['duplicate'])
         self.assertEqual((self.root / 'project' / 'photo.jpg').read_bytes(), raw)
 
+    def test_delete_over_mail_trashes_and_restores(self):
+        (self.root / 'project' / 'old.txt').write_text('bye')
+        self.ctx['grants'] = [{'path': str(self.root / 'project'), 'access': 'delete',
+                               'id': 'g', 'granted_at': 't', 'source': 'test'}]
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'delete_files',
+            {'path': 'old.txt', 'confirm': 'DELETE'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertFalse((self.root / 'project' / 'old.txt').exists())
+        self.assertTrue((self.root / 'project' / '.pico-trash').is_dir())
+        back = self.service.create_task(
+            self.owner, self.device['id'], '', 'restore_deleted', {'name': 'old.txt'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['payload'].get('task_id') == back['id']][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        row = self.db.db('tasks', {'id': 'eq.' + back['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertEqual((self.root / 'project' / 'old.txt').read_text(), 'bye')
+
+    def test_convert_file_over_mail(self):
+        from PIL import Image
+        Image.new('RGB', (8, 8), (10, 10, 200)).save(self.root / 'project' / 'pic.png')
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'convert_file',
+            {'path': 'pic.png', 'to': 'jpg'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertTrue((self.root / 'project' / 'pic.jpg').read_bytes().startswith(b'\xff\xd8'))
+        self.assertIn('Converted to pic.jpg', row['result']['message'])
+
     def test_open_document_over_mail(self):
         (self.root / 'project' / 'Quarterly Report.docx').write_bytes(b'doc')
         opened = []
@@ -180,6 +220,102 @@ class ToolPathTests(unittest.TestCase):
         row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
         self.assertEqual(row['status'], 'completed')
         self.assertIn('Opened Quarterly Report.docx', row['result']['message'])
+
+    def test_rename_round_trip_over_mail(self):
+        (self.root / 'project' / 'old.txt').write_text('keep')
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'rename_file',
+            {'path': 'old.txt', 'new_name': 'new.txt'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        self.assertEqual((self.root / 'project' / 'new.txt').read_text(), 'keep')
+        self.assertFalse((self.root / 'project' / 'old.txt').exists())
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('Renamed old.txt to new.txt', row['result']['message'])
+
+    def test_search_contents_round_trip_over_mail(self):
+        (self.root / 'project' / 'budget.txt').write_text('launch budget 2025')
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'search_contents',
+            {'query': 'budget'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('1 file(s) contain that text', row['result']['message'])
+        self.assertIn('budget.txt', row['result']['message'])
+
+    def test_undo_edit_round_trip_over_mail(self):
+        import hashlib as _hashlib
+        (self.root / 'project' / 'note.txt').write_text('v1')
+        handlers.dispatch(
+            'fs_write',
+            TOOL_REGISTRY.validate('fs_write', {
+                'path': 'note.txt', 'content': 'v2',
+                'base_revision': _hashlib.sha256(b'v1').hexdigest()}),
+            self.ctx)
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'undo_edit',
+            {'path': 'note.txt'})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        self.assertEqual((self.root / 'project' / 'note.txt').read_text(), 'v1')
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('Restored the previous version of note.txt',
+                      row['result']['message'])
+
+    def test_reviewed_create_stamps_phone_approval(self):
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'open_website',
+            {'url': 'https://example.com/x'})
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertIs(row['input'].get('_pico_phone_approved'), True)
+        plain = self.service.create_task(
+            self.owner, self.device['id'], '', 'find_document',
+            {'query': 'brief'})
+        row = self.db.db('tasks', {'id': 'eq.' + plain['id']})[0]
+        self.assertNotIn('_pico_phone_approved', row['input'])
+
+    def test_pdf_pages_merge_over_mail(self):
+        from pypdf import PdfWriter
+        for name in ('a.pdf', 'b.pdf'):
+            writer = PdfWriter()
+            writer.add_blank_page(72, 72)
+            with (self.root / 'project' / name).open('wb') as stream:
+                writer.write(stream)
+        import json as _json
+        task = self.service.create_task(
+            self.owner, self.device['id'], '', 'pdf_pages',
+            {'action': 'merge',
+             'paths_json': _json.dumps(['a.pdf', 'b.pdf'])})
+        mail = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                if m['kind'] == 'tool_call'][0]
+        self.service.complete_tool_result(
+            self.owner, self.device['id'], self.helper_turn(mail))
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertTrue(row['input'].get('_pico_phone_approved') is True)
+
+    def test_pdf_pages_prepare_refusals(self):
+        from relay.service import ApiError
+        bad = [
+            {'action': 'merge', 'paths_json': '["a.pdf"]'},
+            {'action': 'split', 'paths_json': '["a.pdf"]', 'pages': 'soon'},
+            {'action': 'rotate', 'paths_json': '["a.pdf"]', 'angle': '45'},
+            {'action': 'fly', 'paths_json': '["a.pdf"]'},
+        ]
+        for source in bad:
+            with self.assertRaises(ApiError, msg=source):
+                self.service.create_task(
+                    self.owner, self.device['id'], '', 'pdf_pages', source)
 
     def test_organize_photos_over_mail(self):
         (self.root / 'project' / 'a.jpg').write_bytes(b'A' * 50)

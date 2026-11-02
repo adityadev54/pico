@@ -2,13 +2,13 @@
 
 Grants live in the companion state file (`~/.pico/places.json`, key
 "grants") as records {id, path, access, granted_at, source}. Access is
-read or write; write implies read. Legacy {path}-only entries are
-treated as read-only. Enforcement happens in native_search (root
-selection by level) and handlers (per-tool level); this module owns
-request/grant/revoke bookkeeping plus a small CLI:
+read, write or delete; each level implies the ones below it. Legacy
+{path}-only entries are treated as read-only. Enforcement happens in
+native_search (root selection by level) and handlers (per-tool level);
+this module owns request/grant/revoke bookkeeping plus a small CLI:
 
   python3 agents/grants.py list [--state PATH]
-  python3 agents/grants.py grant ~/Documents [--access read|write] [--state PATH]
+  python3 agents/grants.py grant ~/Documents [--access read|write|delete] [--state PATH]
   python3 agents/grants.py revoke <id-or-path> [--state PATH]
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-LEVELS = ('read', 'write')
+LEVELS = ('read', 'write', 'delete')
 DEFAULT_STATE = Path.home() / '.pico' / 'places.json'
 
 
@@ -60,9 +60,64 @@ def list_grants(state_path=DEFAULT_STATE):
     return normalize(load_state(state_path).get('grants', []))
 
 
+def merge_grants(memory, disk):
+    """Union disk grants into memory without dropping in-memory approvals.
+
+    Same path on both sides keeps the higher access level. Disk-only paths
+    are adopted (CLI and popup approvals land this way); memory-only paths
+    are kept, so a CLI revoke takes effect on companion restart. Malformed
+    entries are skipped.
+    """
+    merged = {}
+    order = []
+    clean = lambda entries: [e for e in (entries or []) if isinstance(e, dict)]
+    for entry in normalize(clean(memory)) + normalize(clean(disk)):
+        path = entry.get('path')
+        access = entry.get('access')
+        if not path or access not in LEVELS:
+            continue
+        if path not in merged:
+            merged[path] = dict(entry)
+            order.append(path)
+        elif LEVELS.index(access) > LEVELS.index(merged[path].get('access', 'read')):
+            kept = dict(merged[path])
+            kept['access'] = access
+            if entry.get('source'):
+                kept['source'] = entry['source']
+            if entry.get('granted_at'):
+                kept['granted_at'] = entry['granted_at']
+            merged[path] = kept
+    return [merged[path] for path in order]
+
+
+def record(path, access='read', source='approval'):
+    """Build one grant record without touching disk (IO stays in grant())."""
+    if access not in LEVELS:
+        raise SystemExit('error: access must be read, write or delete')
+    resolved = Path(path).expanduser().resolve()
+    if not resolved.is_dir():
+        raise SystemExit(f'error: {path} is not a directory')
+    return {'id': uuid.uuid4().hex[:8], 'path': str(resolved),
+            'access': access, 'granted_at': stamp(), 'source': source}
+
+
+#: Device-bound keys reset when the helper binds a fresh device identity.
+#: Folder grants and approved apps are machine-local user approvals: they
+#: survive re-pairing so one reconnect never silently revokes them.
+REPAIR_RESET = (('places', {}), ('outgoing', []), ('handled', []), ('task_journal', {}))
+
+
+def fresh_pair_state(state):
+    """Copy `state` with device-bound keys reset, approvals preserved."""
+    fresh = dict(state or {})
+    for key, empty in REPAIR_RESET:
+        fresh[key] = list(empty) if isinstance(empty, list) else dict(empty)
+    return fresh
+
+
 def grant(path, access='read', source='cli', state_path=DEFAULT_STATE):
     if access not in LEVELS:
-        raise SystemExit('error: access must be read or write')
+        raise SystemExit('error: access must be read, write or delete')
     resolved = Path(path).expanduser().resolve()
     if not resolved.is_dir():
         raise SystemExit(f'error: {path} is not a directory')

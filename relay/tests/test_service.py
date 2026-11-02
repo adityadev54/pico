@@ -167,6 +167,18 @@ class ServiceTests(unittest.TestCase):
                 'task_id': str(uuid.uuid4()), 'status': 'succeeded'})
         self.assertEqual(ctx.exception.status, 404)
 
+    def test_failed_result_keeps_the_helper_message(self):
+        task = self.service.create_task(self.owner, self.device['id'], '', 'open_document',
+                                        {'query': 'brief'})
+        self.service.complete_tool_result(self.owner, self.device['id'], {
+            'task_id': task['id'], 'status': 'failed',
+            'error_code': 'permission_denied',
+            'message': 'Choose a folder in the computer permissions first.'})
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['result']['error_code'], 'permission_denied')
+        self.assertEqual(row['result']['message'],
+                         'Choose a folder in the computer permissions first.')
+
     def test_completion_runs_outcome_checks(self):
         empty = self.service.create_task(self.owner, self.device['id'], '', 'find_document',
                                          {'query': 'zzz'})
@@ -327,6 +339,60 @@ class ServiceTests(unittest.TestCase):
             self.service.upload_artifact(
                 self.owner, str(uuid.uuid4()), '', 'photo.jpg', body, 'transfer')
 
+    def test_delete_task_needs_confirm_and_completes(self):
+        task = self.service.create_task(self.owner, self.device['id'], '', 'delete_files',
+                                        {'path': 'old.txt', 'confirm': 'DELETE'})
+        queued = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                  if m['kind'] == 'tool_call']
+        self.assertEqual(queued[0]['payload']['confirm'], 'DELETE')
+        for bad in ({'path': 'old.txt', 'confirm': 'yes'}, {'path': 'old.txt'},
+                    {'path': '../x', 'confirm': 'DELETE'}):
+            with self.assertRaises(ApiError) as ctx:
+                self.service.create_task(self.owner, self.device['id'], '', 'delete_files',
+                                         bad)
+            self.assertEqual(ctx.exception.status, 400)
+        self.service.complete_tool_result(self.owner, self.device['id'], {
+            'task_id': task['id'], 'status': 'succeeded',
+            'data_json': json.dumps({'trashed_count': 1, 'trashed': ['old.txt'],
+                                     'digest': 'ab'}),
+            'evidence_json': json.dumps({'count': 1})})
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('Pico trash: old.txt', row['result']['message'])
+        self.assertIn('restore old.txt', row['result']['message'])
+        restore = self.service.create_task(self.owner, self.device['id'], '',
+                                           'restore_deleted', {'name': 'old.txt'})
+        self.service.complete_tool_result(self.owner, self.device['id'], {
+            'task_id': restore['id'], 'status': 'succeeded',
+            'data_json': json.dumps({'restored': 'old.txt', 'size_bytes': 3,
+                                     'digest': 'ab'}),
+            'evidence_json': json.dumps({'digest': 'ab'})})
+        row = self.db.db('tasks', {'id': 'eq.' + restore['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('Restored old.txt', row['result']['message'])
+
+    def test_convert_task_validates_and_completes(self):
+        task = self.service.create_task(self.owner, self.device['id'], '', 'convert_file',
+                                        {'path': 'pic.jpg', 'to': 'pdf'})
+        queued = [m for m in self.service.mailbox(self.owner, self.device['id'])
+                  if m['kind'] == 'tool_call']
+        self.assertEqual((queued[0]['payload']['path'], queued[0]['payload']['to']),
+                         ('pic.jpg', 'pdf'))
+        for bad in ({'path': '../x.jpg', 'to': 'pdf'}, {'path': 'pic.jpg', 'to': 'exe'},
+                    {'path': '', 'to': 'pdf'}, {'path': '.h/jpg', 'to': 'pdf'}):
+            with self.assertRaises(ApiError) as ctx:
+                self.service.create_task(self.owner, self.device['id'], '', 'convert_file',
+                                         bad)
+            self.assertEqual(ctx.exception.status, 400)
+        self.service.complete_tool_result(self.owner, self.device['id'], {
+            'task_id': task['id'], 'status': 'succeeded',
+            'data_json': json.dumps({'path': 'pic.pdf', 'size_bytes': 10,
+                                     'digest': 'ab'}),
+            'evidence_json': json.dumps({'digest': 'ab'})})
+        row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+        self.assertEqual(row['status'], 'completed')
+        self.assertIn('Converted to pic.pdf', row['result']['message'])
+
     def test_open_document_task_validates_and_completes(self):
         task = self.service.create_task(self.owner, self.device['id'], '', 'open_document',
                                         {'query': 'quarterly report'})
@@ -352,6 +418,105 @@ class ServiceTests(unittest.TestCase):
         row = self.db.db('tasks', {'id': 'eq.' + bad_task['id']})[0]
         self.assertEqual((row['status'], row['result']['error_code']),
                          ('failed', 'invalid_message'))
+
+    def test_new_kinds_validate_and_queue(self):
+        good = {
+            'rename_file': {'path': 'old.txt', 'new_name': 'new.txt'},
+            'duplicate_file': {'path': 'a.txt'},
+            'archive': {'action': 'create', 'paths': ['a.txt', 'docs']},
+            'recent_files': {'days': 7},
+            'search_contents': {'query': 'budget'},
+            'find_duplicates': {},
+            'largest_files': {'limit': 5},
+            'undo_edit': {'path': 'note.txt'},
+            'empty_trash': {'confirm': 'EMPTY'},
+            'disk_usage': {},
+        }
+        reviewed = {'rename_file', 'duplicate_file', 'archive', 'undo_edit', 'empty_trash'}
+        for kind, args in good.items():
+            task = self.service.create_task(self.owner, self.device['id'], '', kind, dict(args))
+            self.assertEqual(task['kind'], kind, kind)
+            row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+            self.assertEqual(row['input'].get('_pico_phone_approved'),
+                             True if kind in reviewed else None, kind)
+        bad = [
+            ('rename_file', {'path': 'a.txt', 'new_name': '../x'}),
+            ('rename_file', {'path': '../a.txt', 'new_name': 'x'}),
+            ('duplicate_file', {'path': '/etc/hosts'}),
+            ('archive', {'action': 'zip', 'paths': ['a.txt']}),
+            ('archive', {'action': 'extract', 'paths': ['a.zip', 'b.zip']}),
+            ('recent_files', {'days': 999}),
+            ('search_contents', {'query': '  '}),
+            ('largest_files', {'limit': 0}),
+            ('undo_edit', {'path': '.hidden'}),
+            ('empty_trash', {'confirm': 'yes'}),
+        ]
+        for kind, args in bad:
+            with self.assertRaises(ApiError, msg=(kind, args)) as ctx:
+                self.service.create_task(self.owner, self.device['id'], '', kind, args)
+            self.assertEqual(ctx.exception.status, 400)
+
+    def test_new_kinds_complete_with_messages(self):
+        cases = [
+            ('rename_file', {'path': 'o.txt', 'new_name': 'n.txt'},
+             {'path': 'n.txt', 'size_bytes': 1, 'digest': 'd', 'previous': 'o.txt'},
+             'Renamed o.txt to n.txt'),
+            ('duplicate_file', {'path': 'a.txt'},
+             {'path': 'a_copy.txt', 'size_bytes': 1, 'digest': 'd', 'source': 'a.txt'},
+             'Copied a.txt to a_copy.txt'),
+            ('archive', {'action': 'create', 'paths': ['a.txt']},
+             {'path': 'b.zip', 'size_bytes': 10, 'digest': 'd', 'count': 1},
+             'Zipped 1 file(s) into b.zip'),
+            ('archive', {'action': 'extract', 'paths': ['b.zip']},
+             {'output': 'out', 'count': 2, 'files': [{'name': 'a', 'path': 'out/a'}]},
+             'Extracted 2 file(s) into out'),
+            ('recent_files', {'days': 7},
+             {'files': [{'name': 'a'}], 'found': 1, 'days': 7},
+             '1 file(s) changed in the last 7 day(s)'),
+            ('search_contents', {'query': 'x'},
+             {'matches': [{'name': 'a'}], 'found': 1},
+             '1 file(s) contain that text'),
+            ('find_duplicates', {},
+             {'groups': [{'digest': 'd', 'size_bytes': 1,
+                          'files': [{'name': 'a'}, {'name': 'b'}]}],
+              'found': 1},
+             '1 duplicate group(s) found'),
+            ('largest_files', {},
+             {'files': [{'name': 'a'}], 'limit': 10},
+             'Top 1 largest file(s) listed'),
+            ('undo_edit', {'path': 'n.txt'},
+             {'path': 'n.txt', 'size_bytes': 1, 'digest': 'd', 'undone': 'revise'},
+             'Restored the previous version of n.txt'),
+            ('empty_trash', {'confirm': 'EMPTY'},
+             {'emptied_count': 2, 'freed_bytes': 9},
+             'Emptied Pico trash: 2 file(s)'),
+            ('disk_usage', {},
+             {'total_bytes': 9, 'file_count': 2},
+             '9 bytes across 2 file(s)'),
+        ]
+        for kind, args, data, message in cases:
+            task = self.service.create_task(self.owner, self.device['id'], '', kind, args)
+            self.service.complete_tool_result(self.owner, self.device['id'], {
+                'task_id': task['id'], 'status': 'succeeded',
+                'data_json': json.dumps(data), 'evidence_json': '{}'})
+            row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+            self.assertEqual(row['status'], 'completed', kind)
+            self.assertIn(message, row['result']['message'], kind)
+        bad = [
+            ('rename_file', {'path': 'o.txt', 'new_name': 'n.txt'}, {'path': 'n.txt'}),
+            ('search_contents', {'query': 'x'}, {'matches': [{'name': ''}]}),
+            ('find_duplicates', {}, {'groups': [{'digest': 'd'}]}),
+            ('empty_trash', {'confirm': 'EMPTY'}, {'emptied_count': -1, 'freed_bytes': 0}),
+            ('disk_usage', {}, {'total_bytes': 1}),
+        ]
+        for kind, args, data in bad:
+            task = self.service.create_task(self.owner, self.device['id'], '', kind, args)
+            self.service.complete_tool_result(self.owner, self.device['id'], {
+                'task_id': task['id'], 'status': 'succeeded',
+                'data_json': json.dumps(data), 'evidence_json': '{}'})
+            row = self.db.db('tasks', {'id': 'eq.' + task['id']})[0]
+            self.assertEqual((row['status'], row['result']['error_code']),
+                             ('failed', 'invalid_message'), kind)
 
     def test_organize_task_validates_folder(self):
         task = self.service.create_task(self.owner, self.device['id'], '', 'organize_photos',

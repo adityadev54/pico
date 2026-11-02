@@ -13,6 +13,7 @@ import '../models/approved_app.dart';
 import '../models/activity.dart';
 import '../models/session.dart';
 import 'computer_tasks.dart';
+import 'local_play.dart';
 import 'relay_client.dart';
 
 part 'pico_chat_store.dart';
@@ -21,6 +22,7 @@ part 'pico_connection_store.dart';
 part 'pico_agent_store.dart';
 part 'pico_app_access.dart';
 part 'pico_workflow_store.dart';
+part 'pico_play_store.dart';
 
 class PicoStore extends ChangeNotifier {
   PicoStore(
@@ -43,6 +45,14 @@ class PicoStore extends ChangeNotifier {
   String museState = 'checking', museLabel = 'Checking Muse';
   DateTime? _museChecked;
   Timer? _appsTimer, _appOpenTimer;
+  // Local play state: pending follow-up, one timer, due reminders.
+  // In-memory on purpose: games and timers do not survive a restart.
+  Map<String, dynamic>? pendingPrompt;
+  Timer? playTimer;
+  DateTime? timerEndsAt;
+  String? timerLabel;
+  final List<Map<String, dynamic>> reminders = [];
+  final Map<String, Timer> _reminderTimers = {};
   final List<ActivityEntry> activities = [];
   final List<Session> sessions = [];
   final List<Map<String, dynamic>> tasks = [];
@@ -410,6 +420,11 @@ class PicoStore extends ChangeNotifier {
     _moodTimer?.cancel();
     _appsTimer?.cancel();
     _appOpenTimer?.cancel();
+    playTimer?.cancel();
+    for (final timer in _reminderTimers.values) {
+      timer.cancel();
+    }
+    _reminderTimers.clear();
     _auth?.cancel();
     _timer?.cancel();
     relay.close();

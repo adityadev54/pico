@@ -18,7 +18,7 @@ class ToolRegistryTests(unittest.TestCase):
 
     def test_list_tools_is_planner_visible(self):
         listed = {t['name']: t for t in TOOL_REGISTRY.list_tools()}
-        self.assertEqual(len(listed), 16)
+        self.assertEqual(len(listed), 30)
         search = listed['search_documents']
         self.assertIn('query', search['args'])
         self.assertEqual(search['execution_target'], 'helper')
@@ -42,6 +42,12 @@ class ToolRegistryTests(unittest.TestCase):
             {'url': 'https://example.com'})
         self.assertEqual(
             TOOL_REGISTRY.validate('open_app', {'app': 'vscode'}), {'app': 'vscode'})
+        for app in ('chrome', 'safari', 'firefox', 'edge', 'files',
+                    'terminal', 'mail', 'photos', 'music', 'messages',
+                    'facetime', 'maps', 'settings', 'appstore', 'word',
+                    'excel', 'powerpoint'):
+            self.assertEqual(
+                TOOL_REGISTRY.validate('open_app', {'app': app}), {'app': app})
         self.assertEqual(TOOL_REGISTRY.validate('manage_permissions', {}), {})
         self.assertEqual(
             TOOL_REGISTRY.validate('fs_write', {'path': 'n.txt', 'content': 'hi'}),
@@ -76,6 +82,18 @@ class ToolRegistryTests(unittest.TestCase):
             ('fs_write', {'path': 'n.txt'}, 'content'),
             ('process_run', {'argv_json': '["echo"]', 'timeout_s': 'many'}, 'number'),
             ('process_run', {'argv_json': '["echo"]', 'timeout_s': '999'}, 'range'),
+            ('rename_file', {'path': 'a.txt'}, 'new_name'),
+            ('rename_file', {'path': '/etc/x', 'new_name': 'y'}, 'relative'),
+            ('duplicate_file', {}, 'path'),
+            ('archive', {'action': 'zip', 'paths_json': '[]'}, 'action'),
+            ('recent_files', {'days': 'soon'}, 'number'),
+            ('recent_files', {'days': '999'}, 'range'),
+            ('search_contents', {}, 'query'),
+            ('largest_files', {'limit': 'many'}, 'number'),
+            ('largest_files', {'limit': '99'}, 'range'),
+            ('undo_edit', {}, 'path'),
+            ('undo_edit', {'path': '/etc/x'}, 'relative'),
+            ('empty_trash', {}, 'confirm'),
         ]
         for tool, args, hint in cases:
             with self.assertRaises(ToolError, msg=(tool, args)) as ctx:

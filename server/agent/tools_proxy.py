@@ -68,7 +68,7 @@ TOOL_LIST: list[dict] = [
      "args": {"app": {"required": True}},
      "available": True},
     {"name": "open_document",
-     "description": "Open one document by name/type. Unique match only.",
+     "description": "Open one file, PDF or folder by name/type. Unique match only.",
      "args": {"query": {"required": True}},
      "available": True},
     {"name": "organize_photos",

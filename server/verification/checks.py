@@ -105,6 +105,17 @@ def check_organize_manifest(data: dict) -> dict:
     return {"ok": True, "copied": data["copied_count"]}
 
 
+def check_delete_manifest(data: dict) -> dict:
+    """A trash report must name what moved and how many."""
+    if not isinstance(data, dict):
+        raise ContractError("invalid_message", "Missing delete manifest.")
+    if not isinstance(data.get("trashed_count"), int) or data["trashed_count"] < 0:
+        raise ContractError("invalid_message", "Delete manifest lacks a count.")
+    if not isinstance(data.get("trashed"), list) or not data["trashed"]:
+        raise ContractError("invalid_message", "Delete manifest names nothing.")
+    return {"ok": True, "trashed": data["trashed_count"]}
+
+
 def check_open_document(data: dict) -> dict:
     """An opened document must name the file and its candidate identity."""
     if not isinstance(data, dict):
@@ -114,3 +125,48 @@ def check_open_document(data: dict) -> dict:
     if not data.get("candidate_id"):
         raise ContractError("invalid_message", "Open manifest lacks identity.")
     return {"ok": True, "name": data["name"]}
+
+
+def check_named_entries(data: dict, key: str) -> dict:
+    """List results carry a bounded list of named entries. Empty is valid."""
+    if not isinstance(data, dict):
+        raise ContractError("invalid_message", "Missing list result.")
+    items = data.get(key)
+    if not isinstance(items, list) or len(items) > 500:
+        raise ContractError("invalid_message", "List result is malformed.")
+    for item in items:
+        if not isinstance(item, dict) or not item.get("name") \
+                or not isinstance(item["name"], str):
+            raise ContractError("invalid_message", "List entry lacks a name.")
+    return {"ok": True, "count": len(items)}
+
+
+def check_duplicate_groups(data: dict) -> dict:
+    """Duplicate groups each name 2+ files of one size. Empty is valid."""
+    if not isinstance(data, dict):
+        raise ContractError("invalid_message", "Missing duplicate report.")
+    groups = data.get("groups")
+    if not isinstance(groups, list) or len(groups) > 500:
+        raise ContractError("invalid_message", "Duplicate report is malformed.")
+    for group in groups:
+        files = group.get("files") if isinstance(group, dict) else None
+        size = group.get("size_bytes") if isinstance(group, dict) else None
+        if not isinstance(files, list) or len(files) < 2:
+            raise ContractError("invalid_message", "Duplicate group names nothing.")
+        if not isinstance(size, int) or size < 0:
+            raise ContractError("invalid_message", "Duplicate group lacks a size.")
+        for item in files:
+            if not isinstance(item, dict) or not item.get("name"):
+                raise ContractError("invalid_message", "Duplicate entry lacks a name.")
+    return {"ok": True, "groups": len(groups)}
+
+
+def check_count_report(data: dict, fields: tuple) -> dict:
+    """Count reports carry every named non-negative integer."""
+    if not isinstance(data, dict):
+        raise ContractError("invalid_message", "Missing count report.")
+    for field in fields:
+        value = data.get(field)
+        if not isinstance(value, int) or value < 0:
+            raise ContractError("invalid_message", f"Count report lacks {field}.")
+    return {"ok": True}

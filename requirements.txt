@@ -1,0 +1,7 @@
+# Pico computer-side Python dependencies (agents + relay + server tests).
+# Install into the project environment:
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+pillow
+pypdf
+python-docx

@@ -19,6 +19,16 @@ Map<String, dynamic> picoTaskView(Map<String, dynamic> row) {
       'read_file',
       'edit_file',
       'run_command',
+      'rename_file',
+      'duplicate_file',
+      'archive',
+      'recent_files',
+      'search_contents',
+      'find_duplicates',
+      'largest_files',
+      'undo_edit',
+      'empty_trash',
+      'disk_usage',
     };
     if (kinds.contains(input['_pico_kind'])) task['kind'] = input['_pico_kind'];
   }

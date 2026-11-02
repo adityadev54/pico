@@ -47,6 +47,11 @@ git tag -a v1.0.0 -m "Pico 1.0.0" && git push origin v1.0.0
 
 ## One-time setup
 
+- **Python environment** (project-local; Homebrew Python refuses system
+  installs under PEP 668, so do not use `--break-system-packages`):
+  `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+  (pillow, pypdf, python-docx for file conversion). Run all Python
+  suites with `.venv/bin/python -m unittest discover -s <dir>/tests`.
 - **Fly secrets** (never in `fly.toml` or git):
   `fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=...`
 - **Android keystore** (stays on the release machine, gitignored):
@@ -70,12 +75,23 @@ re-paired once (claim refuses while the old device row exists).
 ```sh
 # 0. One-time: service key where only you can read it (never in chat
 #    or git). Supabase dashboard -> project -> Settings -> API ->
-#    service_role secret:
+#    service_role secret. Same dashboard -> Authentication -> Users
+#    gives your user UUID for AI below; the Muse key is the one in
+#    server/.env:
 cat > ~/.pico/server.env <<'EOF'
 SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=paste-service-role-key-here
+PICO_MODEL_ENABLED=1
+PICO_MODEL_OWNER_IDS=paste-your-supabase-user-uuid-here
+PICO_MODEL_LEDGER=/Users/santoshadabala/PICO/pico/.local/model_calls.sqlite
+MUSE_API_URL=https://api.meta.ai/v1/chat/completions
+MUSE_API_KEY=paste-muse-key-here
+MUSE_MODEL=muse-spark-1.3
 EOF
 chmod 600 ~/.pico/server.env
+# AI note: /ai/request on this relay enforces the same gates as production
+# ($0.10/call budget, owner allowlist). The relay reads this file at boot,
+# so restart it after any edit.
 
 # 1. Start the relay (keep this terminal running; stdlib only):
 cd /Users/santoshadabala/PICO/pico
@@ -88,6 +104,10 @@ curl -s http://127.0.0.1:8765/health
 # 3. Phone: restart flutter run pointed at it:
 flutter run -d chrome --dart-define-from-file=config/pico.public.json \
   --dart-define=RELAY_URL=http://localhost:8765
+# 3b. Real phone instead of chrome: same Wi-Fi, relay started with
+#     --host 0.0.0.0 (step 1), laptop IP from `ipconfig getifaddr en0`,
+#     then build/run with --dart-define=RELAY_URL=http://<that-ip>:8765
+#     (macOS may ask to allow incoming connections — allow it).
 
 # 4. Helper: stop it, drop the cloud pairing, start it the same way
 #    as before (a fresh helper pairs against http://127.0.0.1:8765

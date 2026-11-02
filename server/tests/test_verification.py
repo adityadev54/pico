@@ -10,6 +10,10 @@ from server.verification.checks import (
     check_process_result,
     check_organize_manifest,
     check_open_document,
+    check_delete_manifest,
+    check_named_entries,
+    check_duplicate_groups,
+    check_count_report,
 )
 
 
@@ -81,6 +85,14 @@ class VerificationTests(unittest.TestCase):
             with self.assertRaises(ContractError):
                 check_organize_manifest(bad)
 
+    def test_delete_manifest_counts(self):
+        self.assertEqual(
+            check_delete_manifest({"trashed_count": 1, "trashed": ["a.txt"]})["trashed"], 1)
+        for bad in ({}, {"trashed_count": 1}, {"trashed_count": -1, "trashed": []},
+                    {"trashed_count": 1, "trashed": []}):
+            with self.assertRaises(ContractError):
+                check_delete_manifest(bad)
+
     def test_open_document_needs_name_and_identity(self):
         self.assertEqual(
             check_open_document({"name": "r.docx", "candidate_id": "c"})["name"],
@@ -94,6 +106,29 @@ class VerificationTests(unittest.TestCase):
             check_process_result({"exit_code": 1, "stdout": "", "stderr": "x"})["exit_code"], 1)
         with self.assertRaises(ContractError):
             check_process_result({"stdout": "", "stderr": ""})
+
+    def test_list_duplicate_and_count_checks(self):
+        self.assertEqual(
+            check_named_entries({"files": [{"name": "a"}]}, "files")["count"], 1)
+        self.assertTrue(check_named_entries({"files": []}, "files")["ok"])
+        for bad in ({}, {"files": {}}, {"files": [{"name": ""}]}, {"files": [{}]}):
+            with self.assertRaises(ContractError):
+                check_named_entries(bad, "files")
+        good = {"groups": [{"digest": "d", "size_bytes": 3,
+                             "files": [{"name": "a"}, {"name": "b"}]}]}
+        self.assertEqual(check_duplicate_groups(good)["groups"], 1)
+        self.assertTrue(check_duplicate_groups({"groups": []})["ok"])
+        for bad in ({},
+                    {"groups": [{"digest": "d", "size_bytes": 3,
+                                 "files": [{"name": "a"}]}]},
+                    {"groups": [{"digest": "d", "size_bytes": -1,
+                                 "files": [{"name": "a"}, {"name": "b"}]}]}):
+            with self.assertRaises(ContractError):
+                check_duplicate_groups(bad)
+        self.assertTrue(check_count_report({"a": 1, "b": 0}, ("a", "b"))["ok"])
+        for bad in ({}, {"a": 1}, {"a": -1, "b": 0}, {"a": "1", "b": 0}):
+            with self.assertRaises(ContractError):
+                check_count_report(bad, ("a", "b"))
 
 
 if __name__ == "__main__":

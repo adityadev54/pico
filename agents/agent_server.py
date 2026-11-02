@@ -9,6 +9,10 @@ Run from the repository root (after pairing and granting folders):
 
     PICO_AGENT_TOKEN=<shared-secret> python3 -m agents.agent_server
 
+With no PICO_SEARCH_ROOTS / --roots, startup shows a permission popup on
+the laptop; one approval grants full file access for the session
+(--no-popup disables it).
+
 Companion integration: Companion passes its grants list and context hooks
 so handlers can open URLs, reopen apps and notify.  When running without
 the companion (e.g. unit tests), supply grants via the PICO_SEARCH_ROOTS
@@ -33,6 +37,7 @@ from urllib.parse import urlsplit
 # Allow running as a module from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from grant_popup import startup_grants  # noqa: E402
 from handlers import dispatch, HANDLERS  # noqa: E402
 from native_search import NativeError  # noqa: E402
 from tools import TOOL_REGISTRY, ToolError  # noqa: E402
@@ -210,6 +215,8 @@ def main(argv=None) -> None:
     parser.add_argument("--port", type=int,
                         default=int(os.environ.get("PICO_AGENT_PORT", DEFAULT_PORT)))
     parser.add_argument("--roots", default=os.environ.get("PICO_SEARCH_ROOTS", ""))
+    parser.add_argument("--no-popup", action="store_true",
+                        help="Never show the file-access approval popup.")
     args = parser.parse_args(argv)
 
     token = os.environ.get("PICO_AGENT_TOKEN", "")
@@ -217,6 +224,7 @@ def main(argv=None) -> None:
     if args.roots:
         grants = [{"path": p.strip(), "access": "write"}
                   for p in args.roots.split(os.pathsep) if p.strip()]
+    grants = startup_grants(grants, allow_popup=not args.no_popup)
 
     print(
         f"Pico agent tool server: http://127.0.0.1:{args.port}  "

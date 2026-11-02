@@ -12,6 +12,10 @@ from .checks import (
     check_process_result,
     check_organize_manifest,
     check_open_document,
+    check_delete_manifest,
+    check_named_entries,
+    check_duplicate_groups,
+    check_count_report,
 )
 
 __all__ = [
@@ -23,4 +27,8 @@ __all__ = [
     "check_process_result",
     "check_organize_manifest",
     "check_open_document",
+    "check_delete_manifest",
+    "check_named_entries",
+    "check_duplicate_groups",
+    "check_count_report",
 ]

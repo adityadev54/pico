@@ -26,13 +26,15 @@ class NativeError(Exception):
 def granted_roots(grants: list[dict], access: str | None = None) -> list[Path]:
     """Usable roots, optionally filtered by access level (A10).
 
-    Levels: read < write (write implies read). Legacy {path}-only grants
-    count as read. access=None keeps the old behavior: every usable root.
+    Levels: read < write < delete (each implies the ones below it).
+    Legacy {path}-only grants count as read. access=None keeps the old
+    behavior: every usable root.
     """
+    ranks = {"read": 0, "write": 1, "delete": 2}
     roots = []
     for grant in grants or []:
         level = grant.get("access", "read")
-        if access == "write" and level != "write":
+        if access is not None and ranks.get(level, 0) < ranks.get(access, 0):
             continue
         path = Path(str(grant.get("path", ""))).expanduser().resolve()
         if path.is_dir():
@@ -108,8 +110,9 @@ def resolve_candidate(candidate_id: str, grants: list[dict] | None = None) -> Pa
     """Map candidate ID back to a path under current grants. Enforces grants."""
     roots = granted_roots(grants or [])
     for root in roots:
-        for dirpath, _, filenames in os.walk(root, followlinks=False):
-            for name in filenames:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            for name in list(filenames) + [d for d in dirnames
+                                            if not d.startswith('.')]:
                 full = Path(dirpath) / name
                 try:
                     if candidate_id_for(full) == candidate_id:

@@ -29,7 +29,7 @@ def create(service,owner,body):
         ('fs_read','Read a relative file in an approved folder.',{'path':{'required':True}}),
         ('fs_list','List an approved folder.',{'path':{'required':False}}),
         ('organize_photos','Copy unique photos to a folder, preserving originals. Requires human review.',{'folder':{'required':True}}),
-        ('open_document','Open a uniquely matched document. Requires human review.',{'query':{'required':True}}),
+        ('open_document','Open a uniquely matched file, PDF or folder. Requires human review.',{'query':{'required':True}}),
         ('open_website','Open an HTTPS website. Requires human review.',{'url':{'required':True}}),
         ('process_run','Run an executable with explicit arguments encoded as a JSON string array. No shell. Requires exact local approval.',{'argv_json':{'required':True},'cwd':{'required':False},'timeout_s':{'required':False}})]
     if modern:
