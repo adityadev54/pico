@@ -1,6 +1,6 @@
 # Security and privacy
 
-Integration notes checked 2026-10-29. Automated checks use synthetic data and mocked model calls. Physical Windows UI testing remains; this is a development release.
+Integration notes updated 2026-11-03. Automated checks use synthetic data and mocked model calls. Physical Windows UI testing remains; this is a development release.
 
 ## What is enforced where
 
@@ -23,9 +23,7 @@ Integration notes checked 2026-10-29. Automated checks use synthetic data and mo
   `PICO_ENV_FILE`, and in Fly secrets. Never in apps, downloads, logs, or git
   (`.gitignore` covers `**/.env`, keystores, certs).
 - `config/pico.public.json` holds the publishable key only — safe to ship.
-- Release signing: `PICO_MAC_IDENTITY` + `PICO_NOTARY_PROFILE`,
-  `PICO_WIN_CERT` + `PICO_WIN_CERT_PASSWORD`, `android/key.properties`. All
-  owner-held; builds warn loudly when absent.
+- Release signing: `PICO_SIGN_IDENTITY` for the Mac installer and ignored `android/key.properties` for Android. The current scripts do not notarize the Mac app or Authenticode-sign Windows. Signing credentials stay owner-held.
 - `Pico-source.zip` excludes `.env`, keystores, certs, and build output
   (`scripts/package_companion.py`); re-audit with
   `unzip -l downloads/Pico-source.zip` before each release.
@@ -35,7 +33,7 @@ Integration notes checked 2026-10-29. Automated checks use synthetic data and mo
 - Android declares `RECORD_AUDIO`; iOS declares mic + speech recognition with
   user-visible strings; macOS snapshots require Screen Recording and are
   skipped without it; private-browsing windows are never snapshotted.
-- Desktop snapshots purge after `retention_days` (default 7); relay delivery
+- Mac finished-place snapshots purge after `retention_days` (default 7). Windows previews remain local and currently require manual management; relay delivery
   receipts expire in 24h; pairing attempts reset on success.
 - Supabase rows (`tasks`, `handoffs`, `devices`) persist until the user
   clears history or unpairs. There is no automatic server-side expiry.

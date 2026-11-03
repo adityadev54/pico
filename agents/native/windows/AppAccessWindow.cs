@@ -17,7 +17,7 @@ sealed class AppAccessWindow : Form
         FlowLayoutPanel Actions(ListBox list, bool exclusion) {
             var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Margin = new Padding(0,0,0,12) };
             var add = new Button { Text = "Choose app…", AutoSize = true, MinimumSize = new Size(120,40), Margin = new Padding(0,0,12,0) };
-            add.Click += (_,_) => { using var picker = new OpenFileDialog { Title = exclusion ? "Never snapshot this app" : "Allow Pico to open this app", Filter = "Applications (*.exe)|*.exe", CheckFileExists = true, Multiselect = false, InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) }; if (picker.ShowDialog(this) == DialogResult.OK) Edit(() => settings.Add(picker.FileName, exclusion)); };
+            add.Click += (_,_) => { using var picker=new InstalledAppPicker(exclusion);if(picker.ShowDialog(this)==DialogResult.OK && picker.SelectedApp is InstalledApp app)Edit(()=>settings.Add(app,exclusion)); };
             actions.Controls.Add(add);
             if (!exclusion) {
                 var open = new Button { Text = "Open", AutoSize = true, MinimumSize = new Size(90,40), Margin = new Padding(0,0,12,0) };
@@ -29,7 +29,7 @@ sealed class AppAccessWindow : Form
         }
         layout.Controls.Add(new Label { Text = "Apps Pico can open", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0,0,0,12) },0,0);
         layout.Controls.Add(allowed,0,1); layout.Controls.Add(Actions(allowed,false),0,2);
-        layout.Controls.Add(new Label { Text = "Never snapshot these apps\nWindows snapshots are currently off. Opening an app does not grant snapshot access.", AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0,0,0,12) },0,3);
+        layout.Controls.Add(new Label { Text = "Never snapshot these apps\nOpening an app does not grant preview access. Configure previews in Hold my place.", AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0,0,0,12) },0,3);
         layout.Controls.Add(excluded,0,4); layout.Controls.Add(Actions(excluded,true),0,5); layout.Controls.Add(status,0,6);
         Controls.Add(layout); Reload();
         Shown += (_,_) => { var work = Screen.FromControl(this).WorkingArea; Size = new Size(Math.Min(Width,work.Width-24),Math.Min(Height,work.Height-24)); };

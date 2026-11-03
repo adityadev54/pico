@@ -1,3 +1,9 @@
+# Windows 0.8.5
+
+- Search apps by name from running windows, Start-menu shortcuts and registered Microsoft Store applications. Manual EXE browsing remains a fallback; shortcut scripts/arguments are not imported.
+- Store entries retain bounded app identities, while only approved IDs/names are sent to the phone. Existing EXE permissions remain compatible.
+- App preview selection uses the same named picker for executable apps, and app exclusions are enforced during capture.
+
 # Windows 0.8.4
 
 - Fix clipped companion menu labels at high display scaling. Menu width follows measured text and icon/check gutters; narrow screens wrap labels and short screens scroll. Recalculates on monitor DPI changes.

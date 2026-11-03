@@ -1,89 +1,127 @@
-# Pico
+<p align="center">
+  <img src="assets/branding/app-icon.png" width="88" alt="Pico" />
+</p>
+<h1 align="center">Pico</h1>
+<p align="center">A companion for the work you leave on your computer—and pick up from your phone.</p>
+<p align="center">
+  <a href="https://pico-companion.fly.dev/setup#setup">Download</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="docs/runbook.md">Build guide</a> ·
+  <a href="https://github.com/adityadev54/pico/issues">Report an issue</a>
+</p>
+<p align="center">
+  <a href="https://github.com/adityadev54/pico/actions/workflows/windows.yml"><img src="https://github.com/adityadev54/pico/actions/workflows/windows.yml/badge.svg" alt="Windows companion CI" /></a>
+</p>
 
-A phone and desktop companion for picking up work across devices—and repeating useful routines you have shown it once.
+## Why Pico?
 
-[Download Pico](https://pico-companion.fly.dev/setup#setup) · [Watch & repeat guide](docs/watch-and-repeat.md) · [Build and release](docs/runbook.md) · [Release notes](RELEASE-NOTES.md)
+Moving between a phone and a computer usually means losing context: the file you need is on the other device, a half-finished task slips away, or a useful routine has to be repeated from scratch.
 
-## What you can do
+Pico connects those moments. A small desktop character holds your place while the phone provides a conversation for finding files, reviewing actions and running routines you have taught it. The desktop stays an overlay and background helper, not another dashboard.
 
-- **Hold your place.** Step away from your computer, save your next step on your phone, and return to it through the companion. Park unfinished work for later.
-- **Work with your computer from your phone.** Open approved apps and websites, find files in approved folders, transfer a selected file, save an upload, and review file changes.
-- **Teach a repeatable result.** Select source documents, edit an example result, and let Muse learn the transformation. Run that routine on updated inputs from the conversation. Pico checks source quotations and verifies the saved output.
-- **Use local tools.** File search, bounded text reads/writes, supported PDF/image operations, archives, reviewed trash/restore, games and timers do not need a model call.
-- **Capture from your phone.** The composer’s **+** menu contains microphone, camera and Watch & repeat. Camera uploads use the existing reviewed save flow.
+<p align="center"><img src="docs/images/home.png" width="260" alt="Pico’s phone home screen with Tuck and Save a Place" /></p>
+<p align="center"><sub>Phone UI rendered from the application’s widget tests.</sub></p>
 
-Pico teaches selected-file transformations. It does not record arbitrary mouse/keyboard activity or promise to automate every application.
+## A workflow, not another chat tab
 
-## Install and connect
+For example, prepare a weekly study review:
 
-| Device | Current download | Requirements |
-| --- | --- | --- |
-| Android | APK · 0.8.3 (23) | Android 7+; update over the existing app |
-| iPhone | Web app | Safari → Share → Add to Home Screen; no native IPA is published |
-| Mac | DMG · 0.8.2 (22) | Apple silicon, macOS 13+; development-signed, not notarized |
-| Windows | EXE · 0.8.4 | Windows 10/11 x64; runtime bundled |
+1. Give Pico access to a folder containing your lecture notes.
+2. Choose **Teach a routine…**, select the notes and edit an example of the review you want.
+3. Approve learning that example with Muse.
+4. Next week, update the inputs and run the saved routine from your phone.
+5. Pico reads the current files, checks the response’s source quotations, and saves a new result on your computer.
 
-1. Install the phone app and desktop companion.
-2. Sign in on the phone, get a six-digit pairing code, and enter it on the computer.
-3. Choose the applications and folders Pico may use. Read, write and reviewed-trash permissions are separate.
-4. Try an ordinary request such as “Find my lecture notes.” Only approved folders are searched.
+This is selected-file teaching. It does not record arbitrary clicks or keystrokes, and it does not automate every desktop app. [Read the workflow guide →](docs/watch-and-repeat.md)
 
-On Windows, **Open apps → Choose app…** currently selects an installed `.exe`; a searchable installed-app catalog is not implemented. Quit the running companion before installing a desktop update. Pairing and settings are retained.
+## What is built
 
-## What uses Muse?
-
-| Work | Processing |
+| Capability | What it does |
 | --- | --- |
-| Pairing, connection checks, approved app/site opening, file tools, Places, games and timers | Deterministic/local tools; connected actions still need the relay |
-| Learning or running a taught routine; supported AI planning and requested summaries | Muse through the authenticated server and configured account/budget limits |
-| Companion moods | Local activity state and device messages; no model call |
-| Optional window previews | Saved on the computer; this release does not send them to Muse |
+| Places | Save a next step, park unfinished work and pick it up on the computer |
+| Computer actions | Open approved apps/sites; search approved folders; read or transfer a selected file |
+| Reviewed file tools | Create/edit files, save phone uploads, copy unique photos, convert supported documents, manage PDFs and ZIPs, and trash/restore files |
+| Watch & repeat | Learn a demonstrated document transformation and repeat it on changed or replacement inputs |
+| Phone input | Text plus microphone and camera actions in the composer |
+| Companions | Original animated characters with activity-driven moods and synchronized state |
 
-Model access can be restricted by account. Spending limits are server-configured; reservation estimates are not actual provider invoices. Failed model requests are not automatically retried. Provider and Supabase service credentials never belong in Flutter or version control.
+Deterministic tools, Places and moods do not require a model call. Taught routines and supported AI requests use Muse through the authenticated backend. Connected actions still require the relay; “local tool” does not mean the whole product works offline.
 
-## Are the new moods real?
+## Getting started
 
-Yes: they are automatic activity reactions, not a manual picker. Both characters keep their original animated GIFs, with additional shake, tilt, bounce, sway or pop motion.
+Download the phone app and desktop companion from the [setup page](https://pico-companion.fly.dev/setup#setup).
 
-| Mood | Trigger | Original GIF |
-| --- | --- | --- |
-| Curious | Learning/waiting for a local game answer | Thinking |
-| Happy | A successful task or routine | Done |
-| Angry | A failed task or routine | Stuck |
-| Sleepy | Quiet idle, driven by the phone activity timer | Idle |
-| Surprised | A new step-away prompt | Needs-you |
+| Platform | Distribution |
+| --- | --- |
+| Android 7+ | APK |
+| iPhone | Safari web app → Add to Home Screen |
+| Apple silicon Mac, macOS 13+ | DMG |
+| Windows 10/11 x64 | Self-contained EXE |
 
-Approvals take priority. Brief reactions return to the current activity; old completed tasks do not replay them. Active moods refresh before their desktop lease expires. Reduced-motion behavior is respected by the phone and native motion layers.
+Sign in on the phone, create a six-digit pairing code and enter it on the computer. Then choose the apps and folders Pico may access. Start with an ordinary request such as **“Find my lecture notes.”**
 
-These are **not five newly drawn facial GIFs**. Flutter tests cover triggers, original-GIF selection and mood refresh; relay tests cover delivery. The Mac/Windows native implementations compile. Physical Windows visual/capture checks and physical Android camera checks are still incomplete.
+On Windows, **Open apps → Choose app…** lists apps by name, including running apps and registered Store apps. Search for Calculator, Chrome, Word or the application you actually want Pico to open; you should not have to identify a folder under Program Files. Manual `.exe` selection remains available for apps that are not discovered.
 
-## Permissions and current boundaries
+## Architecture
 
-- Folder access is explicit; revocation is checked before sensitive operations. Writes use conflict checks rather than silently replacing changed files.
-- Reviewed trash access is stronger than ordinary write access. Permanently emptying Pico trash requires a separate computer approval.
-- Commands require computer approval, run without a shell, and have bounded time/output. App opening grants do not grant screen access.
-- Windows previews are opt-in for selected apps. Browsers, messaging/password apps and protected windows are excluded; previews stay local.
-- Current transfer/conversion limits include a 1 MB file/output cap. Taught routines accept 1–4 readable documents, at most 6,000 characters total, and an example up to 2,000 characters. Scanned PDFs need OCR elsewhere first.
-- Word-to-PDF requires an existing LibreOffice installation. Other bundled document tools do not require installing Python on Windows.
-- Legacy automatic Head Start/“guess my next step” is not the working Muse feature in this version; taught routines are.
+```mermaid
+flowchart LR
+    Phone[Flutter phone app] <-->|Authenticated HTTPS| Relay[Python relay]
+    Relay <--> Auth[Supabase accounts and data]
+    Relay <-->|Scoped tasks and results| Desktop[Native desktop companion]
+    Desktop --> Files[Approved local files and apps]
+    Desktop --> Engine[Shared Python workflow engine]
+    Engine -->|Model request| Desktop
+    Relay -->|Server-side model call| Muse[Muse backend]
+```
 
-## Develop
+- **Flutter** owns the phone conversation, review cards, account state and companion presentation.
+- **Swift/AppKit and C#/WinForms** own desktop overlays, native controls and platform integration.
+- **Python** provides the relay, scoped tools, teaching engine and output validation. Windows bundles this runtime; users do not install Python.
+- **Supabase** supplies account and service data. Privileged credentials stay server-side.
 
-Flutter/Dart powers the phone UI. Python runs the relay and shared workflow engine. Native Swift and C# provide the desktop overlays and controls. Supabase supplies accounts and persistent service data.
+The desktop decides what it is permitted to execute. A model response is a proposal, not permission to bypass a folder grant, approval or conflict check.
+
+## Development
+
+Prerequisites: Flutter with the relevant platform SDK, Python 3.12+, and .NET 10 for the native Windows companion. Mac builds require Xcode command-line tools.
 
 ```sh
+git clone https://github.com/adityadev54/pico.git
+cd pico
 flutter pub get
 python3 -m venv .venv-runtime
 .venv-runtime/bin/python -m pip install -r requirements-document-tools.txt
 
-# Phone: defaults to the configured public relay
+# Phone app: uses the configured relay by default.
 sh scripts/run_phone.sh
 
-# Mac companion: uses .venv-runtime by default
+# Mac companion.
 sh scripts/run_companion.sh
 ```
 
-On Windows, create the environment with `py -3 -m venv .venv-runtime` and use `.venv-runtime\Scripts\python.exe`. Build the native installer with .NET 10 using the commands in the [runbook](docs/runbook.md). Override `RELAY_URL`/`--relay` only when deliberately testing your own relay. A local relay needs server-only Supabase configuration and the schema documented in [security](docs/security.md); starting it does not provision a backend.
+On Windows use `py -3 -m venv .venv-runtime` and `.venv-runtime\Scripts\python.exe`. To build the native companion:
+
+```sh
+python scripts/build_windows_installer.py
+```
+
+This downloads the bundled runtime and builds `downloads/Pico-Setup.exe`. See the [build and release guide](docs/runbook.md) for signed Android builds, Mac packaging and the iPhone web app.
+
+### Running your own relay
+
+Configure an existing compatible Supabase backend; this repository does not provision its database policies. Put `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in an ignored server environment file. Muse additionally needs server-only `MUSE_API_URL`, `MUSE_API_KEY`, `MUSE_MODEL` and the required account/budget configuration.
+
+```sh
+PICO_ENV_FILE=/path/to/server.env sh scripts/run_relay.sh
+sh scripts/run_phone.sh --dart-define=RELAY_URL=http://localhost:8765
+sh scripts/run_companion.sh --relay http://localhost:8765
+```
+
+Use your computer’s reachable address for physical-phone development; `localhost` on a phone refers to that phone. Non-local plain HTTP is disabled by default in the helper. Keep public Flutter configuration separate from service credentials. [Security notes →](docs/security.md)
+
+### Tests
 
 ```sh
 flutter analyze
@@ -92,21 +130,37 @@ flutter test
 .venv-runtime/bin/python -m unittest discover -s test -p '*test.py'
 .venv-runtime/bin/python -m unittest discover -s relay/tests
 .venv-runtime/bin/python -m unittest discover -s server/tests
-
 dotnet run --project test/windows_core/WindowsCore.csproj
 ```
 
-## Project map
+Windows CI exercises the shared worker, permissions, app grants, file operations, pairing and installer build on a Windows runner. UI/device checks are still needed for camera behavior and monitor-specific rendering.
 
-| Folder | Responsibility |
-| --- | --- |
-| `lib/components`, `lib/screens`, `lib/theme` | Reusable Flutter UI, screens and visual roles |
-| `lib/services`, `lib/models`, `lib/platforms` | App state/networking, data types and platform adapters |
-| `agents` | Desktop helper lifecycle, scoped tools and shared `skills` engine |
-| `agents/native` | Swift Mac overlay and C# Windows companion |
-| `relay`, `server` | Authenticated transport, budgets, model calls and verification |
-| `test`, `agents/tests`, `relay/tests`, `server/tests` | Regression tests and native checks |
-| `scripts`, `config` | Launch/build tools and public configuration |
-| `website`, `docs` | Download page and maintained guides |
+### Repository layout
 
-`build/`, `downloads/`, `.local/` and virtual environments are generated or machine-local and ignored. Local pairing state, signing keys, private reports and credentials are not pushed. Release binaries are distributed through the download website rather than committed to Git.
+```text
+lib/            Flutter components, screens, services, models and theme
+agents/         Desktop helpers, native UI and shared workflow engine
+relay/          Authenticated transport, mailbox and budget integration
+server/         AI planning and verification
+scripts/        Run, build and packaging commands
+config/         Public application configuration
+website/        Download and setup page
+test/           Flutter/integration tests and native Windows checks
+docs/           Workflow, security and release guides
+```
+
+Generated builds, downloads, environments, private reports and pairing state are ignored. Do not commit signing material or service credentials.
+
+## Boundaries worth knowing
+
+- This is a development release: the Mac download is development-signed rather than notarized, and no native iPhone IPA is published.
+- File transfers and supported conversion outputs currently have a 1 MB cap. Taught routines use 1–4 readable documents, at most 6,000 characters total, and an example up to 2,000 characters. Scanned PDFs need OCR elsewhere; Word-to-PDF needs LibreOffice.
+- Windows window previews are opt-in, remain local, and exclude browsers and sensitive apps. They are not uploaded to Muse.
+- New moods are automatic motion on the original GIFs, not five newly drawn facial animations. [Mood behavior →](docs/companion-moods.md)
+- Muse access and spending limits are server-controlled. A reservation is not a provider invoice. Model requests are not automatically retried.
+
+## Contributing
+
+Keep changes focused and include the relevant regression checks. For a bug, report the phone/desktop versions, operating system, steps, expected result and actual result. Redact tokens and private file contents from logs or screenshots.
+
+Before submitting changes, run the checks above and update the relevant guide if behavior changes. Permission changes must preserve revocation, approval and changed-file checks. Please discuss broad changes in an [issue](https://github.com/adityadev54/pico/issues) first.

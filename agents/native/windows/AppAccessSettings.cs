@@ -22,12 +22,16 @@ internal sealed class AppAccessSettings
         } catch { }
     }
     static bool Valid(AppGrant a) => a != null && Guid.TryParse(a.Id, out _) && !string.IsNullOrWhiteSpace(a.Name) && a.Name.Length <= 40 &&
-        Path.IsPathFullyQualified(a.Path) && !a.Path.StartsWith(@"\\") && Path.GetExtension(a.Path).Equals(".exe", StringComparison.OrdinalIgnoreCase);
+        (InstalledApps.IsStoreTarget(a.Path) || Path.IsPathFullyQualified(a.Path) && !a.Path.StartsWith(@"\\") && Path.GetExtension(a.Path).Equals(".exe", StringComparison.OrdinalIgnoreCase));
     internal void Add(string path, bool exclusion)
     {
-        path = Path.GetFullPath(path);
-        var app = new AppGrant(Guid.NewGuid().ToString(), Path.GetFileNameWithoutExtension(path)[..Math.Min(40, Path.GetFileNameWithoutExtension(path).Length)], path);
-        if (!Valid(app) || !File.Exists(path)) throw new InvalidOperationException("Choose an installed .exe app on this computer.");
+        Add(new InstalledApp(Path.GetFileNameWithoutExtension(path),Path.GetFullPath(path),"Selected file"),exclusion);
+    }
+    internal void Add(InstalledApp selected,bool exclusion)
+    {
+        string path=selected.Target;
+        var app = new AppGrant(Guid.NewGuid().ToString(), selected.Name[..Math.Min(40,selected.Name.Length)], path);
+        if (!Valid(app) || !(InstalledApps.IsStoreTarget(path) ? !exclusion && InstalledApps.Scan().Any(a=>a.Target==path) : File.Exists(path))) throw new InvalidOperationException("Choose an installed application from the list, or browse for its .exe.");
         var list = new List<AppGrant>(exclusion ? excluded : allowed);
         if (list.Any(a => string.Equals(a.Path, path, StringComparison.OrdinalIgnoreCase))) return;
         if (list.Count >= (exclusion ? 100 : 20)) throw new InvalidOperationException("The app list is full. Remove an entry first.");
@@ -48,8 +52,13 @@ internal sealed class AppAccessSettings
             return new(false, "This request expired. Tap the app again.");
         var app = allowed.FirstOrDefault(a => a.Id == id);
         if (app == null) return new(false, "Approve this app on your computer first.");
-        try { if (File.Exists(app.Path) && launch(app.Path)) return new(true, "Opened " + app.Name + "."); } catch { }
+        try { if ((InstalledApps.IsStoreTarget(app.Path)||File.Exists(app.Path)) && launch(app.Path)) return new(true, "Opened " + app.Name + "."); } catch { }
         return new(false, "Couldn’t open this app. Check that it is still installed.");
     }
-    static bool Launch(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(path)! }) != null;
+    static bool Launch(string path) {
+        if(InstalledApps.IsStoreTarget(path)) {
+            return InstalledApps.ActivateStore(path);
+        }
+        return Process.Start(new ProcessStartInfo(path){UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(path)!})!=null;
+    }
 }

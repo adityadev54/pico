@@ -18,12 +18,12 @@ internal static class WindowsCapture {
  [DllImport("user32.dll")]static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
  [DllImport("user32.dll")]static extern bool GetWindowDisplayAffinity(IntPtr h,out uint affinity);
  [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
- internal static (string App,string Title,string? Snapshot) Capture(IntPtr window,CaptureSettings settings,string place) {
+ internal static (string App,string Title,string? Snapshot) Capture(IntPtr window,CaptureSettings settings,string place,IReadOnlyList<string>? excluded=null) {
   try {
    GetWindowThreadProcessId(window,out uint pid);using var process=Process.GetProcessById((int)pid);string exe=process.MainModule?.FileName??"";
    string app=process.ProcessName;var text=new StringBuilder(512);GetWindowText(window,text,text.Capacity);string title=text.ToString();
    string[] sensitive=["chrome","msedge","firefox","brave","opera","vivaldi","arc","outlook","teams","slack","signal","whatsapp","telegram","1password","keepass","bitwarden"];
-   bool blocked=sensitive.Any(x=>app.Contains(x,StringComparison.OrdinalIgnoreCase))||new[]{"private","incognito","password","inprivate"}.Any(x=>title.Contains(x,StringComparison.OrdinalIgnoreCase));
+   bool blocked=(excluded?.Contains(exe,StringComparer.OrdinalIgnoreCase)??false)||sensitive.Any(x=>app.Contains(x,StringComparison.OrdinalIgnoreCase))||new[]{"private","incognito","password","inprivate"}.Any(x=>title.Contains(x,StringComparison.OrdinalIgnoreCase));
    if(blocked)return ("Private window","",null);
    if(!settings.Snapshots||!settings.AllowedCaptureApps.Contains(exe,StringComparer.OrdinalIgnoreCase)||GetForegroundWindow()!=window)return(app,title,null);
    if(GetWindowDisplayAffinity(window,out uint affinity)&&affinity!=0)return(app,title,null);

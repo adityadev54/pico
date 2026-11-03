@@ -10,7 +10,8 @@ sealed partial class Companion {
   if(idle&&!away) {
    away=true;capturing=true;string id=Guid.NewGuid().ToString();IntPtr window=GetForegroundWindow();string? account=token;
    try {
-    var result=await Task.Run(()=>WindowsCapture.Capture(window,captureSettings,id));
+    var excluded=appAccess.Excluded.Select(app=>app.Path).ToList();
+    var result=await Task.Run(()=>WindowsCapture.Capture(window,captureSettings,id,excluded));
     if(account!=token)return;
     state["places"]![id]=new JsonObject{["sentence"]="",["status"]="waiting",["app"]=result.App,["title"]=result.Title,["snapshot"]=result.Snapshot,["created"]=DateTimeOffset.UtcNow.ToUnixTimeSeconds()};
     state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="idle",["payload"]=new JsonObject{["place_id"]=id,["app"]=result.App[..Math.Min(120,result.App.Length)]}});Save();
@@ -26,7 +27,7 @@ sealed partial class Companion {
   var minutes=new NumericUpDown{Minimum=1,Maximum=60,Value=Math.Clamp(captureSettings.Minutes,1,60),Width=100};
   var snapshots=new CheckBox{Text="Save a local preview from selected apps",Checked=captureSettings.Snapshots,AutoSize=true};
   var apps=new Button{Text="Choose an app for previews…",AutoSize=true};
-  apps.Click+=(_,_)=>{using var pick=new OpenFileDialog{Title="Allow this app’s window in local previews",Filter="Applications|*.exe"};if(pick.ShowDialog(form)==DialogResult.OK){captureSettings.AllowedCaptureApps.Add(pick.FileName);captureSettings.Save();}};
+  apps.Click+=(_,_)=>{using var pick=new InstalledAppPicker(true);if(pick.ShowDialog(form)==DialogResult.OK && pick.SelectedApp is InstalledApp selected){captureSettings.AllowedCaptureApps.Add(selected.Target);captureSettings.Save();}};
   var clear=new Button{Text="Remove all preview app permissions",AutoSize=true};clear.Click+=(_,_)=>{captureSettings.AllowedCaptureApps.Clear();captureSettings.Save();};
   var hint=new Label{Text="Minutes before stepping away. Previews stay on this computer. Browsers, messaging and password apps are excluded. No screen images are sent to Muse.",AutoSize=true,MaximumSize=new Size(550,0)};
   enabled.CheckedChanged+=(_,_)=>{captureSettings.Enabled=enabled.Checked;captureSettings.Save();};minutes.ValueChanged+=(_,_)=>{captureSettings.Minutes=(int)minutes.Value;captureSettings.Save();};snapshots.CheckedChanged+=(_,_)=>{captureSettings.Snapshots=snapshots.Checked;captureSettings.Save();};

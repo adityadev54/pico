@@ -6,6 +6,18 @@ try {
  var settings=new AppAccessSettings(Path.Combine(folder,"grants.json"),path=>{launched.Add(path);return true;});
  settings.Add(file,false);settings.Add(file,false);settings.Add(file,true);
  if(settings.Allowed.Count!=1 || settings.Excluded.Count!=1)throw new Exception("Grants must remain separate and deduplicated");
+ var normalized=InstalledApps.Normalize(new[]{new InstalledApp("Friendly app",file,"Running now"),new InstalledApp("Duplicate",file,"Start menu"),new InstalledApp("Bad script",Path.Combine(folder,"bad.cmd"),"Start menu")});
+ if(normalized.Count!=1||normalized[0].Name!="Friendly app")throw new Exception("Catalog must deduplicate real executable targets and reject scripts");
+ if(!InstalledApps.IsStoreTarget(@"shell:AppsFolder\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App")||InstalledApps.IsStoreTarget(@"shell:AppsFolder\bad!App & calc.exe")||InstalledApps.IsStoreTarget(@"shell:AppsFolder\..\cmd.exe"))throw new Exception("Store targets must be bounded app identities, not commands");
+ if(OperatingSystem.IsWindows()) {
+  string programs=Environment.GetFolderPath(Environment.SpecialFolder.Programs);Directory.CreateDirectory(programs);
+  string shortcutFile=Path.Combine(programs,"Pico catalog check "+Guid.NewGuid()+".lnk");
+  object? shellObject=null;
+  try {
+   shellObject=Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!);dynamic shell=shellObject!;dynamic shortcut=shell.CreateShortcut(shortcutFile);shortcut.TargetPath=file;shortcut.Save();
+   var catalog=await InstalledApps.ScanAsync();if(!catalog.Any(a=>a.Target.Equals(file,StringComparison.OrdinalIgnoreCase)&&a.Source=="Start menu"))throw new Exception("Windows Start menu discovery must return the actual approved target");
+  } finally {File.Delete(shortcutFile);if(shellObject!=null)System.Runtime.InteropServices.Marshal.ReleaseComObject(shellObject);}
+ }
  string id=settings.Allowed[0].Id;
  using(var catalog=JsonDocument.Parse(settings.Catalog())) if(catalog.RootElement[0].TryGetProperty("Path",out _) || catalog.RootElement[0].TryGetProperty("path",out _))throw new Exception("Paths must remain on the computer");
  if(settings.Open(file).Opened || settings.Open(id,"0").Opened || launched.Count!=0)throw new Exception("Unknown or expired requests must not launch");

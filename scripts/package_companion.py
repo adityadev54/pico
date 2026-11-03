@@ -20,7 +20,7 @@ def main():
     names=['Pico-macOS.dmg','Pico-Setup.exe','Pico-Android.apk','Pico-source.zip']
     hashes={name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in names}
     (output/'SHA256SUMS').write_text(''.join(value+'  '+name+'\n' for name,value in hashes.items()))
-    (output/'release.json').write_text(json.dumps({'version':'0.8.3','build':23,'mac_version':'0.8.2','relay':'https://pico-companion.fly.dev','iphone':'/phone/','files':{name:{'sha256':digest,'bytes':(output/name).stat().st_size} for name,digest in hashes.items()},'windows_version':'0.8.4','windows_limits':'Local window previews only; browsers and sensitive apps excluded. Word to PDF needs LibreOffice. Native Windows visual verification pending.'},indent=2)+'\n')
+    (output/'release.json').write_text(json.dumps({'version':'0.8.3','build':23,'mac_version':'0.8.2','relay':'https://pico-companion.fly.dev','iphone':'/phone/','files':{name:{'sha256':digest,'bytes':(output/name).stat().st_size} for name,digest in hashes.items()},'windows_version':'0.8.5','windows_limits':'Local window previews only; browsers and sensitive apps excluded. Word to PDF needs LibreOffice. Native Windows visual verification pending.'},indent=2)+'\n')
     with zipfile.ZipFile(output/'Pico-source.zip') as z:
         assert 'android/key.properties' not in z.namelist()
         assert 'agents/skills/contracts.py' in z.namelist()
