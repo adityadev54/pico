@@ -21,7 +21,17 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 - **Watch & repeat:** show Pico an example result, then run the learned routine from your phone.
 - **Stay in control:** explicit folder permissions, reviewed changes and source-checked AI output.
 
-File tools and companion moods do not need a model call. Taught routines use Muse through the authenticated backend. Connected actions require the relay.
+## Where Muse works
+
+Muse runs on the authenticated server, not inside the phone or desktop app:
+
+| Flow | Muse’s role |
+| --- | --- |
+| Watch & repeat | Learns a recipe from selected documents and your example; applies it to new inputs with source-quote checks. |
+| AI computer request | `Ask Pico: …` plans one supported action or asks for clarification. Local permissions and review still apply. |
+| Summarize with Muse | Summarizes the selected, already-read document excerpt—not the entire computer. |
+
+Basic file/app commands, transfers, parking, camera capture and companion moods do not call Muse. Voice input uses the platform speech service. Step-away previews do not currently generate Muse guesses. Connected actions still need the relay; Muse requests additionally need account access and available budget. Failed model calls are not automatically retried.
 
 ## Get started
 
