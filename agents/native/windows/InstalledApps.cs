@@ -20,7 +20,9 @@ internal static class InstalledApps {
   object? manager=null;
   try {
    manager=Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C"))!);
-   return ((ActivationManager)manager!).ActivateApplication(target[StorePrefix.Length..],"",2,out uint pid)==0&&pid>0;
+   int code=((ActivationManager)manager!).ActivateApplication(target[StorePrefix.Length..],"",2,out uint pid);
+   if(code<0)Marshal.ThrowExceptionForHR(code);
+   return pid>0;
   }finally{if(manager!=null)Marshal.ReleaseComObject(manager);}
  }
  internal static Task<List<InstalledApp>> ScanAsync(){

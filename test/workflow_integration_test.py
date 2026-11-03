@@ -220,6 +220,22 @@ class WorkflowTests(unittest.TestCase):
   self.post('/tasks/approve',{'id':task['id'],'confirmed':True,'grant_id':grant_id(self.folder)})
   done=self.run_task(task);self.assertEqual(done['status'],'completed');self.assertIn('Pair',(self.folder/'checklist.txt').read_text())
 
+class LegacyAppRoutingTests(unittest.TestCase):
+ setUp=WorkflowTests.setUp
+ post=WorkflowTests.post
+ task=WorkflowTests.task
+ row=WorkflowTests.row
+ def test_legacy_app_opening_is_not_fake_document_evidence(self):
+  task=self.task('open_document',{'query':'Chat GPT'},True)
+  data={'name':'ChatGPT','opened_as':'approved_app','opened_app_id':str(uuid.uuid4())}
+  self.client.post('/agent/mail',{'id':str(uuid.uuid4()),'kind':'tool_result','payload':{'task_id':task['id'],'call_id':str(uuid.uuid4()),'status':'succeeded','data_json':json.dumps(data),'evidence_json':'{}'}})
+  result=self.row(task);self.assertEqual(result['status'],'completed');self.assertEqual(result['result']['opened_as'],'approved_app');self.assertNotIn('candidate_id',result['result'])
+ def test_wrong_app_result_cannot_complete_a_document_request(self):
+  task=self.task('open_document',{'query':'Homework'},True)
+  data={'name':'ChatGPT','opened_as':'approved_app','opened_app_id':str(uuid.uuid4())}
+  self.client.post('/agent/mail',{'id':str(uuid.uuid4()),'kind':'tool_result','payload':{'task_id':task['id'],'call_id':str(uuid.uuid4()),'status':'succeeded','data_json':json.dumps(data),'evidence_json':'{}'}})
+  self.assertEqual(self.row(task)['status'],'failed')
+
 class PhoneApprovalTests(unittest.TestCase):
  setUp=WorkflowTests.setUp
  post=WorkflowTests.post

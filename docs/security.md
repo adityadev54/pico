@@ -53,9 +53,7 @@ Integration notes updated 2026-11-03. Automated checks use synthetic data and mo
 2. **No general rate limiting.** Pairing has lockout; authenticated endpoints
    rely on per-account abuse containment. Recommended follow-up if abuse
    appears: per-token mail/task quotas in `RelayState`.
-3. **Helper version is not reported.** The phone tolerates missing
-   `helper_version`; outdated-helper warnings only fire when the column is
-   set. The supported workflow path also checks the reported capability catalog. Recommended follow-up: companion reports its version on poll.
+3. **Helper version is not reported.** The phone tolerates missing `helper_version` and uses the reported capability catalog for document/file support. App execution still requires the local allowlist. Recommended follow-up: companion reports its version on poll.
 4. **Docker image tag floats.** `relay/Dockerfile` pins `python:3.12-slim`
    by tag, not digest (no network to resolve a digest at audit time).
    Pin a digest at release: record it in the release notes.
@@ -72,3 +70,9 @@ python3 -m unittest discover -s relay/tests
 python3 -m unittest discover -s server/tests
 python3 -m unittest discover -s agents/tests
 ```
+
+## Exposure audit — 2026-11-03
+
+The audit checked reachable Git history, the public source ZIP, APK and web bundle, desktop packaging, sensitive HTTP paths and anonymous database reads. No confirmed privileged credential or signing-key exposure was found in that scope. Token-shaped matches in branding SVGs were verified as embedded font data. The client Supabase key is publishable; it is not a service credential.
+
+The tested unauthenticated relay endpoints required authentication, sensitive file paths returned 404, and the database probes returned no private rows. These probes do not prove cross-user RLS isolation. Pico’s project was not available to the connected Supabase management account, so live policy metadata and a full authenticated cross-user policy audit remain unverified. This is not a blanket security certification.

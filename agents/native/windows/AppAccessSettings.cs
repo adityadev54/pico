@@ -45,6 +45,13 @@ internal sealed class AppAccessSettings
         File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(new AppGrantFile(nextAllowed, nextExcluded)));
         File.Move(file + ".tmp", file, true); allowed = nextAllowed; excluded = nextExcluded;
     }
+    internal static string NameKey(string value)=>new string(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    internal IReadOnlyList<AppGrant> MatchName(string query,bool prefix=false) {
+        string key=NameKey(query);if(key.Length==0)return [];
+        var exact=allowed.Where(a=>NameKey(a.Name)==key).ToList();
+        if(exact.Count>0||!prefix||key.Length<4)return exact;
+        return allowed.Where(a=>NameKey(a.Name).StartsWith(key,StringComparison.Ordinal)).ToList();
+    }
     internal string Catalog() => JsonSerializer.Serialize(allowed.Select(a => new { id = a.Id, name = a.Name }));
     internal AppOpenResult Open(string id, string? expiresAt = null)
     {
@@ -52,7 +59,7 @@ internal sealed class AppAccessSettings
             return new(false, "This request expired. Tap the app again.");
         var app = allowed.FirstOrDefault(a => a.Id == id);
         if (app == null) return new(false, "Approve this app on your computer first.");
-        try { if ((InstalledApps.IsStoreTarget(app.Path)||File.Exists(app.Path)) && launch(app.Path)) return new(true, "Opened " + app.Name + "."); } catch { }
+        try { if ((InstalledApps.IsStoreTarget(app.Path)||File.Exists(app.Path)) && launch(app.Path)) return new(true, "Opened " + app.Name + "."); } catch(Exception error) {return new(false,$"Windows couldn’t open {app.Name} (0x{error.HResult:X8}). Try opening it from Start first.");}
         return new(false, "Couldn’t open this app. Check that it is still installed.");
     }
     static bool Launch(string path) {

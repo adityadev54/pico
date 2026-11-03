@@ -94,7 +94,7 @@ sealed partial class Companion : Form
             catch { File.Delete(tokenFile); }
             var characterFile = Path.Combine(Program.Folder, "character.txt");
             SetCharacter(File.Exists(characterFile) ? File.ReadAllText(characterFile).Trim() : "tuck");
-            if (token == null) await Pair(); else Schedule(1000);
+            if (token == null) await Pair(); else { QueueAppCatalog(); Schedule(1000); }
         };
         FormClosed += (_, _) => { timer.Stop(); idleTimer.Dispose(); replyTimer.Dispose(); workflow.Dispose(); http.Dispose(); };
     }
@@ -164,13 +164,20 @@ sealed partial class Companion : Form
         moodUntil=DateTimeOffset.UtcNow.AddSeconds(60).ToUnixTimeMilliseconds();
         try {
             JsonObject outcome;
-            if(data["tool"]?.GetValue<string>()=="manage_permissions") {
+            var (startCode,started)=await Api("/agent/start",new(){["task_id"]=task});
+            if(startCode!=HttpStatusCode.OK||started["cancelled"]?.GetValue<bool>()==true||stop.IsCancellationRequested) {
+                outcome=new(){["task_id"]=task,["call_id"]=data["call_id"]!.DeepClone(),["status"]="failed",["error_code"]="cancelled",["message"]="This request is no longer active. Nothing was opened."};
+            } else {
+            var appResult=SafeTaskExecution.ResolveApprovedAppDocument(data,appAccess);
+            if(appResult!=null)outcome=appResult;
+            else if(data["tool"]?.GetValue<string>()=="manage_permissions") {
                 fileAccess.Show(this);outcome=new(){["task_id"]=task,["call_id"]=data["call_id"]!.DeepClone(),["status"]="succeeded",["data_json"]="{}",["evidence_json"]="{}",["message"]="Permissions opened."};
             } else outcome = data["tool"]?.GetValue<string>()=="open_app"
                 ? SafeTaskExecution.Execute(data,appAccess)
                 : SharedFileTools.Names.Contains(data["tool"]?.GetValue<string>())
                 ? await SharedFileTools.Execute(data,fileAccess,workflow,review=>ReviewTask(review),async(path,body)=>{var (code,value)=await Api(path,body);if(code!=HttpStatusCode.OK)throw new InvalidOperationException("Connection failed.");return value;},stop.Token)
                 : await Task.Run(()=>FileTaskExecution.Execute(data,fileAccess,review=>(bool)Invoke(()=>ReviewTask(review)),async(path,body)=>{var (code,value)=await Api(path,body);if(code!=HttpStatusCode.OK)throw new InvalidOperationException("transfer_failed");return value;},stop.Token));
+            }
             SetCharacter(current ?? "tuck",outcome["status"]?.GetValue<string>()=="succeeded"?"happy":"angry");
             moodUntil=DateTimeOffset.UtcNow.AddSeconds(4).ToUnixTimeMilliseconds();
             state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="tool_result",["payload"]=outcome});

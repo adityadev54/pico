@@ -105,12 +105,23 @@ def check_organize_manifest(data: dict) -> dict:
     return {"ok": True, "copied": data["copied_count"]}
 
 
-def check_open_document(data: dict) -> dict:
+def check_open_document(data: dict, requested_name: str | None = None) -> dict:
     """An opened document must name the file and its candidate identity."""
     if not isinstance(data, dict):
         raise ContractError("invalid_message", "Missing open manifest.")
     if not data.get("name") or not isinstance(data.get("name"), str):
         raise ContractError("invalid_message", "Open manifest lacks a name.")
+    if data.get("opened_as") == "approved_app":
+        import uuid
+        try:
+            uuid.UUID(data.get("opened_app_id", ""))
+        except (ValueError, TypeError, AttributeError):
+            raise ContractError("invalid_message", "Opened app lacks an approved identity.") from None
+        def name_key(value):
+            return ''.join(char.lower() for char in value if char.isalnum())
+        if not requested_name or name_key(requested_name) != name_key(data["name"]):
+            raise ContractError("invalid_message", "Opened app does not match the request.")
+        return {"ok": True, "name": data["name"], "opened_as": "approved_app"}
     if not data.get("candidate_id"):
         raise ContractError("invalid_message", "Open manifest lacks identity.")
     return {"ok": True, "name": data["name"]}

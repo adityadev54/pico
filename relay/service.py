@@ -480,7 +480,7 @@ class PicoService:
         if status != 'succeeded':
             code = payload.get('error_code', 'timeout')
             self.db.db('tasks', {'id': 'eq.'+task['id']},
-                       {'status': 'failed', 'result': {'error_code': code[:64]}}, 'PATCH')
+                       {'status': 'failed', 'result': {'error_code': code[:64], 'message': str(payload.get('message','Couldn’t finish this request.'))[:200]}}, 'PATCH')
             return {'ok': True}
         try:
             data = json.loads(payload.get('data_json', '{}') or '{}')
@@ -521,7 +521,7 @@ class PicoService:
             elif kind == 'organize_photos':
                 check_organize_manifest(data)
             elif kind == 'open_document':
-                check_open_document(data)
+                check_open_document(data, (task.get('input') or {}).get('query'))
             # open_website/open_app/manage_permissions/read_back_file carry no
             # checkable evidence; a succeeded report completes them.
         except ContractError as failed:

@@ -1,3 +1,10 @@
+# Windows 0.8.6 / Phone 0.8.4 (24)
+
+- Natural requests resolve approved app names (including Chat GPT / Galaxy Buds spacing) instead of treating them as filenames. App approval remains local and mandatory.
+- Older phones receive an explicitly typed approved-app result when Windows resolves an exact app name from a document-open request. No file candidate evidence is fabricated; server verification checks the requested name and app identity.
+- Windows rechecks task activity before launch; Store activation failures retain a bounded Windows error rather than reporting success.
+- Approved app catalogs are announced when an existing paired companion starts.
+
 # Windows 0.8.5
 
 - Search apps by name from running windows, Start-menu shortcuts and registered Microsoft Store applications. Manual EXE browsing remains a fallback; shortcut scripts/arguments are not imported.

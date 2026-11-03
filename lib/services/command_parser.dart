@@ -90,7 +90,13 @@ String _cleanNoteName(String raw) {
 }
 
 /// Recognizes supported actions only; other speech stays ordinary conversation.
-ComputerCommand? parseComputerCommand(String speech) {
+String appNameKey(String name) =>
+    name.toLowerCase().replaceAll(RegExp(r'[\s._-]+'), '');
+
+ComputerCommand? parseComputerCommand(
+  String speech, {
+  Iterable<String> approvedAppNames = const [],
+}) {
   var text = speech
       .trim()
       .replaceAll(RegExp(r'[.!?]+$'), '')
@@ -145,6 +151,23 @@ ComputerCommand? parseComputerCommand(String speech) {
       }
     } catch (_) {}
     return null;
+  }
+  final namedApp = RegExp(
+    r'^(?:open|launch|start)\s+(?:the\s+)?(.+?)(?:\s+app)?$',
+    caseSensitive: false,
+  ).firstMatch(text);
+  if (namedApp != null) {
+    final wanted = appNameKey(namedApp.group(1)!);
+    final names = approvedAppNames.toList();
+    final exact = names.where((name) => appNameKey(name) == wanted).toList();
+    final matches = exact.isNotEmpty
+        ? exact
+        : wanted.length >= 4
+        ? names.where((name) => appNameKey(name).startsWith(wanted)).toList()
+        : <String>[];
+    if (matches.length == 1) {
+      return command('open_app', {'app': matches.single});
+    }
   }
   final appMatch = RegExp(
     r'^(?:open|launch|start)\s+(?:the\s+)?(calculator|calendar|vs\s*code|visual studio code|browser|default browser|notes|sticky notes)(?: app)?$',

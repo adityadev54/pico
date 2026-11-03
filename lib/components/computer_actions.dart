@@ -12,7 +12,10 @@ Future<bool> dispatchComputerAction(
   PicoStore store,
   String value,
 ) async {
-  final command = parseComputerCommand(value);
+  final command = parseComputerCommand(
+    value,
+    approvedAppNames: store.approvedApps.map((app) => app.name),
+  );
   if (command == null) {
     final ai = museRequestText(value);
     if (ai == null) return false;
@@ -60,24 +63,6 @@ Future<bool> dispatchComputerAction(
   final device = await chooseComputer(context, store, hint: command.deviceHint);
   if (device == null || !context.mounted) return true;
   final helper = store.devices.firstWhere((item) => item['id'] == device);
-  final helperVersion = helper['helper_version'] as String?;
-  if (['open_app', 'manage_permissions'].contains(command.kind) &&
-      helperVersion != null &&
-      ![
-        '0.2.0',
-        '0.3.0',
-        '0.4.0',
-        '0.5.0',
-        '0.6.0',
-        '0.7.0',
-      ].contains(helperVersion)) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('update the computer helper from the setup page first.'),
-      ),
-    );
-    return true;
-  }
   if (['convert_file', 'pdf_pages'].contains(command.kind) &&
       !((helper['document_tools'] as List?) ?? []).contains(command.kind)) {
     ScaffoldMessenger.of(context).showSnackBar(
