@@ -72,12 +72,34 @@ extension PicoConnectionStore on PicoStore {
     try {
       final result = await relay.request('/devices', token: token);
       if (userId != owner) return;
+      final previousDevice = devices.firstOrNull?['id'];
       devices = (result['devices'] as List)
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
       if (approvedAppsDeviceId != null &&
           (devices.isEmpty || approvedAppsDeviceId != devices.first['id'])) {
         _clearAppAccess();
+        _routineChatId = null;
+        routines.clear();
+        routineRequest = null;
+        routineMessage = null;
+        _routineTimer?.cancel();
+      }
+      if (previousDevice != devices.firstOrNull?['id']) {
+        _routineChatId = null;
+        routines.clear();
+        routineReviewId = null;
+        routineRequest = null;
+        routineMessage = null;
+        _routineTimer?.cancel();
+        _routineCatalogDevice = null;
+      }
+      if (devices.isNotEmpty &&
+          isOnline(devices.first) &&
+          _routineCatalogDevice != devices.first['id'] &&
+          routineRequest == null) {
+        _routineCatalogDevice = devices.first['id'] as String;
+        unawaited(requestRoutines(quiet: true));
       }
       await refreshMuseStatus();
       await syncCompanion();
@@ -114,8 +136,10 @@ extension PicoConnectionStore on PicoStore {
         final message = Map<String, dynamic>.from(raw);
         final data = Map<String, dynamic>.from(message['payload']);
         _receiveAppMessage(message);
+        _receiveRoutine(message);
         if (message['kind'] == 'idle') {
           pendingPlaceId = data['place_id'] as String?;
+          previewMood('surprised');
         }
         if (message['kind'] == 'parked') {
           final i = places.indexWhere((p) => p.id == data['place_id']);
@@ -180,7 +204,14 @@ extension PicoConnectionStore on PicoStore {
       final device = devices.first['id'];
       final activity = mood;
       final key = '$device:$selected:$size:$activity';
-      if (_sentCompanion == key) return;
+      if (_sentCompanion == key &&
+          !shouldRefreshCompanionMood(
+            activity,
+            _companionMoodSentAt,
+            DateTime.now(),
+          )) {
+        return;
+      }
       await relay.request(
         '/mail',
         token: _token,
@@ -202,6 +233,7 @@ extension PicoConnectionStore on PicoStore {
       );
       if (owner != userId) return;
       _sentCompanion = key;
+      _companionMoodSentAt = DateTime.now();
       // A newer selection may have arrived while the request was in flight.
     }
   }
@@ -217,6 +249,11 @@ extension PicoConnectionStore on PicoStore {
     await relay.request('/unpair', token: _token, body: {'device_id': id});
     _sentCompanion = null;
     _clearAppAccess();
+    _routineChatId = null;
+    routines.clear();
+    routineRequest = null;
+    routineMessage = null;
+    _routineTimer?.cancel();
     await recordActivity('Computer unpaired', 'Connection revoked', 'devices');
     await refreshDevices();
   }

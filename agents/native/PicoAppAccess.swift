@@ -3,10 +3,10 @@ import UniformTypeIdentifiers
 
 extension CompanionPanels {
     func appAccessSection() -> NSView {
-        var rows: [NSView] = [label("Only apps you choose here can be opened from your phone.", size:12)]
+        var rows: [NSView] = []
         for app in settings["allowed_apps"] as? [[String:String]] ?? [] {
             let open = button("Open", #selector(openAllowed(_:)))
-            let remove = button("Remove", #selector(removeAllowed(_:)))
+            let remove = button("−", #selector(removeAllowed(_:)))
             open.identifier = NSUserInterfaceItemIdentifier(app["id"] ?? "")
             remove.identifier = open.identifier
             rows.append(stack([label(app["name"] ?? "App"), open, remove], vertical:false))
@@ -49,21 +49,23 @@ extension CompanionPanels {
 
 extension CompanionPanels {
     func folderAccessSection() -> NSView {
-        var rows:[NSView] = [label("Choose read-only or write access. Each write or command also needs your approval here.",size:12)]
+        var rows:[NSView] = []
         for grant in settings["grants"] as? [[String:String]] ?? [] {
             let path = grant["path"] ?? ""
-            let remove = button("Remove",#selector(removeReadFolder(_:)));remove.identifier = NSUserInterfaceItemIdentifier(path)
+            let remove = button("−",#selector(removeReadFolder(_:)));remove.toolTip = "Remove folder access";remove.setAccessibilityLabel("Remove folder access");remove.identifier = NSUserInterfaceItemIdentifier(path)
             rows.append(stack([label(URL(fileURLWithPath:path).lastPathComponent + " · " + (grant["access"] ?? "read")),remove],vertical:false))
         }
-        rows.append(stack([button("Read-only folder…",#selector(addReadFolder)),button("Write workspace…",#selector(addWriteFolder))],vertical:false))
+        rows.append(stack([button("Read folder…",#selector(addReadFolder)),button("Write folder…",#selector(addWriteFolder))],vertical:false))
+        rows.append(button("Allow reviewed trash…",#selector(addDeleteFolder)))
         return section("Approved folders",rows)
     }
     @objc func addReadFolder() { chooseFolder(access:"read") }
+    @objc func addDeleteFolder() { chooseFolder(access:"delete") }
     @objc func addWriteFolder() { chooseFolder(access:"write") }
     func chooseFolder(access:String) {
         var grants = settings["grants"] as? [[String:String]] ?? []
         guard grants.count < 20 else {return}
-        let picker = NSOpenPanel();picker.title = access == "write" ? "Allow reviewed writes in this folder" : "Allow Pico to read this folder";picker.canChooseDirectories = true;picker.canChooseFiles = false
+        let picker = NSOpenPanel();picker.title = access == "delete" ? "Allow reviewed trash actions in this folder" : access == "write" ? "Allow reviewed writes in this folder" : "Allow Pico to read this folder";picker.canChooseDirectories = true;picker.canChooseFiles = false
         guard picker.runModal() == .OK, let url = picker.url else {return}
         grants.removeAll(where:{$0["path"] == url.path});grants.append(["path":url.path,"access":access])
         settings["grants"] = grants;save();showPermissions()

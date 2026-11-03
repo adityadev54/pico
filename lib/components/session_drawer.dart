@@ -141,7 +141,9 @@ class SessionDrawer extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        store.connection,
+                        store.museState == 'ready'
+                            ? '${store.connection} / Muse'
+                            : store.connection,
                         style: const TextStyle(
                           fontSize: 12,
                           color: PicoTheme.drawerMuted,

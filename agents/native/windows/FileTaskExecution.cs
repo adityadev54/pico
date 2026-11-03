@@ -17,7 +17,7 @@ internal static class FileTaskExecution {
    if(started["cancelled"]?.GetValue<bool>()==true)throw new InvalidOperationException("cancelled");
    var grants=access.Grants.Where(g=>FolderAccessStore.Usable(g)&&(S(p,"grant_id")==""||g.Id==S(p,"grant_id"))).ToList();
    bool writes=tool is "fs_write" or "organize_photos" or "fetch_upload" or "process_run";
-   if(writes)grants=grants.Where(g=>g.Access=="write").ToList();
+   if(writes)grants=grants.Where(g=>g.Access is "write" or "delete").ToList();
    if(tool!="manage_permissions"&&tool!="open_website"&&grants.Count==0)throw new InvalidOperationException("permission_denied");
    var data=new JsonObject();var evidence=new JsonObject();
    if(writes||tool is "open_document" or "open_website") {
@@ -25,7 +25,7 @@ internal static class FileTaskExecution {
     var phoneApproved=started["phone_approved"]?.GetValue<bool>()==true&&tool!="process_run";
     if(!phoneApproved&&!approve(review))throw new InvalidOperationException("permission_denied");
     if((await api("/agent/start",new(){["task_id"]=S(p,"task_id")}))["cancelled"]?.GetValue<bool>()==true)throw new InvalidOperationException("cancelled");
-    if(!grants.All(g=>access.Grants.Any(current=>current.Id==g.Id&&(!writes||current.Access=="write"))&&FolderAccessStore.Usable(g)))throw new InvalidOperationException("permission_denied");
+    if(!grants.All(g=>access.Grants.Any(current=>current.Id==g.Id&&(!writes||current.Access is "write" or "delete"))&&FolderAccessStore.Usable(g)))throw new InvalidOperationException("permission_denied");
     cancel.ThrowIfCancellationRequested();if(expiry<DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())throw new InvalidOperationException("timeout");
    }
    var grant=grants.FirstOrDefault();

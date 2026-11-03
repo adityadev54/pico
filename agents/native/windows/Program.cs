@@ -20,7 +20,10 @@ static class Program
             if (!string.Equals(Environment.ProcessPath, installed, StringComparison.OrdinalIgnoreCase))
             {
                 // Install for the current user; no administrator or separate runtime required.
-                File.Copy(Environment.ProcessPath!, installed, true);
+                while(true) {
+                    try {File.Copy(Environment.ProcessPath!, installed, true);break;}
+                    catch(IOException) {if(MessageBox.Show("Quit the running Pico companion, then choose Retry to install this update.","Update Pico",MessageBoxButtons.RetryCancel,MessageBoxIcon.Information)!=DialogResult.Retry)return;}
+                }
                 var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
                 dynamic shell = Activator.CreateInstance(shellType)!;
                 string shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Pico.lnk");
@@ -37,12 +40,13 @@ static class Program
     }
 }
 
-sealed class Companion : Form
+sealed partial class Companion : Form
 {
     const string Relay = RelayConfig.Url;
     readonly AppAccessSettings appAccess = new(Path.Combine(Program.Folder, "app-access.json"));
+    readonly WorkflowRuntime workflow = new();
     readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(65) };
-    readonly PictureBox picture = new() { SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Magenta };
+    readonly MoodPictureBox picture = new() { SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Magenta };
     readonly System.Windows.Forms.Timer timer = new();
     readonly System.Windows.Forms.Timer replyTimer = new() { Interval = 12000 };
     readonly ReplyBubble reply = new() { Visible = false };
@@ -78,8 +82,9 @@ sealed class Companion : Form
         var area = Screen.PrimaryScreen!.WorkingArea; Location = new Point(area.Right - 200, area.Bottom - 200);
         Controls.Add(picture); Controls.Add(reply);
         LayoutAgent();
+        StartIdleDetection();
         reply.Click += (_, _) => { if (replyPlace != null) ShowPlaceDetails(replyPlace); };
-        replyTimer.Tick += (_, _) => { replyTimer.Stop(); reply.Visible = false; SetCharacter(current ?? "tuck", "idle"); };
+        replyTimer.Tick += (_, _) => { replyTimer.Stop(); reply.Visible = false; if(mood == "talking") SetCharacter(current ?? "tuck", "idle"); };
         picture.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero); } };
         picture.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowCompanionMenu(); };
         timer.Tick += async (_, _) => { timer.Stop(); await Poll(); };
@@ -91,7 +96,7 @@ sealed class Companion : Form
             SetCharacter(File.Exists(characterFile) ? File.ReadAllText(characterFile).Trim() : "tuck");
             if (token == null) await Pair(); else Schedule(1000);
         };
-        FormClosed += (_, _) => { timer.Stop(); replyTimer.Dispose(); http.Dispose(); };
+        FormClosed += (_, _) => { timer.Stop(); idleTimer.Dispose(); replyTimer.Dispose(); workflow.Dispose(); http.Dispose(); };
     }
     CompanionMenu? companionMenu;
     void ShowCompanionMenu()
@@ -102,7 +107,7 @@ sealed class Companion : Form
         companionMenu = new CompanionMenu(picture.RectangleToScreen(picture.ClientRectangle), startup, () => {
             using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             if (!startup) run.SetValue("Pico", "\"" + Environment.ProcessPath + "\""); else run.DeleteValue("Pico", false);
-        }, ShowAppAccess, ShowParked, Disconnect, Close, () => fileAccess.Show(this));
+        }, ShowAppAccess, ShowParked, Disconnect, Close, () => fileAccess.Show(this), ShowTeach, ShowCaptureSettings);
         companionMenu.Show(this);
     }
     void ShowAppAccess() { using var window = new AppAccessWindow(appAccess, QueueAppCatalog); window.ShowDialog(); }
@@ -146,15 +151,28 @@ sealed class Companion : Form
         if (form.ShowDialog() != DialogResult.OK) { Close(); return; }
         Schedule(1000); await Task.CompletedTask;
     }
+    bool ReviewTask(JsonObject review) {
+        SetCharacter(current ?? "tuck","needsYou");
+        moodUntil=DateTimeOffset.UtcNow.AddSeconds(60).ToUnixTimeMilliseconds();
+        bool allowed=FileAccess.Approve(this,review);
+        if(allowed)SetCharacter(current ?? "tuck","working");
+        return allowed;
+    }
     async Task ExecuteTask(string mailId,JsonObject data) {
         string task=data["task_id"]!.GetValue<string>();using var stop=new CancellationTokenSource();runningTasks[task]=stop;
+        SetCharacter(current ?? "tuck","working");
+        moodUntil=DateTimeOffset.UtcNow.AddSeconds(60).ToUnixTimeMilliseconds();
         try {
             JsonObject outcome;
             if(data["tool"]?.GetValue<string>()=="manage_permissions") {
                 fileAccess.Show(this);outcome=new(){["task_id"]=task,["call_id"]=data["call_id"]!.DeepClone(),["status"]="succeeded",["data_json"]="{}",["evidence_json"]="{}",["message"]="Permissions opened."};
             } else outcome = data["tool"]?.GetValue<string>()=="open_app"
                 ? SafeTaskExecution.Execute(data,appAccess)
-                : await Task.Run(()=>FileTaskExecution.Execute(data,fileAccess,review=>(bool)Invoke(()=>FileAccess.Approve(this,review)),async(path,body)=>{var (code,value)=await Api(path,body);if(code!=HttpStatusCode.OK)throw new InvalidOperationException("transfer_failed");return value;},stop.Token));
+                : SharedFileTools.Names.Contains(data["tool"]?.GetValue<string>())
+                ? await SharedFileTools.Execute(data,fileAccess,workflow,review=>ReviewTask(review),async(path,body)=>{var (code,value)=await Api(path,body);if(code!=HttpStatusCode.OK)throw new InvalidOperationException("Connection failed.");return value;},stop.Token)
+                : await Task.Run(()=>FileTaskExecution.Execute(data,fileAccess,review=>(bool)Invoke(()=>ReviewTask(review)),async(path,body)=>{var (code,value)=await Api(path,body);if(code!=HttpStatusCode.OK)throw new InvalidOperationException("transfer_failed");return value;},stop.Token));
+            SetCharacter(current ?? "tuck",outcome["status"]?.GetValue<string>()=="succeeded"?"happy":"angry");
+            moodUntil=DateTimeOffset.UtcNow.AddSeconds(4).ToUnixTimeMilliseconds();
             state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="tool_result",["payload"]=outcome});
             state["task_journal"]![mailId]=new JsonObject{["status"]="finished"};var handled=state["handled"]!.AsArray();handled.Add(mailId);while(handled.Count>200)handled.RemoveAt(0);Save();ShowReply(outcome["message"]?.GetValue<string>()??"Request finished.");
         } finally {runningTasks.TryRemove(task,out _);}
@@ -163,10 +181,11 @@ sealed class Companion : Form
     {
         if (name is not ("tuck" or "mica")) name = "tuck";
         activity ??= mood;
-        if (activity is not ("idle" or "listening" or "talking" or "working" or "thinking" or "done" or "stuck" or "needsYou")) return;
+        if (activity is not ("idle" or "listening" or "talking" or "working" or "thinking" or "done" or "stuck" or "needsYou" or "angry" or "curious" or "happy" or "sleepy" or "surprised")) return;
         if (current == name && mood == activity) return;
-        current = name; mood = activity; File.WriteAllText(Path.Combine(Program.Folder, "character.txt"), name);
-        using var stream = typeof(Program).Assembly.GetManifestResourceStream(name + "." + mood + ".gif");
+        current = name; mood = activity; picture.SetReaction(activity); File.WriteAllText(Path.Combine(Program.Folder, "character.txt"), name);
+        var asset = mood switch { "angry" => "stuck", "curious" => "thinking", "happy" => "done", "sleepy" => "idle", "surprised" => "needsYou", _ => mood };
+        using var stream = typeof(Program).Assembly.GetManifestResourceStream(name + "." + asset + ".gif");
         if (stream == null) throw new InvalidOperationException("Missing character");
         var next = new MemoryStream(); stream.CopyTo(next); next.Position = 0;
         var old = picture.Image; picture.Image = Image.FromStream(next); old?.Dispose(); imageStream?.Dispose(); imageStream = next;
@@ -204,6 +223,7 @@ sealed class Companion : Form
                         state["task_journal"]![id]=new JsonObject{["status"]="running",["payload"]=data.DeepClone()};Save();
                         _ = ExecuteTask(id,(JsonObject)data.DeepClone());continue;
                     }
+                    if (kind == "skill_request") { _ = ReceiveSkill(id,(JsonObject)data.DeepClone()); }
                     if (kind == "apps_request") QueueAppCatalog();
                     if (kind == "open_app") {
                         string appId = data["app_id"]!.GetValue<string>();
@@ -242,7 +262,7 @@ sealed class Companion : Form
                         if(place["status"]?.GetValue<string>() is not ("parked" or "finished"))place["status"] = "ready";
                         activePlace = placeId;
                     }
-                    handled.Add(id); while (handled.Count > 200) handled.RemoveAt(0);
+                    if(!handled.Any(x=>x?.GetValue<string>()==id))handled.Add(id); while (handled.Count > 200) handled.RemoveAt(0);
                     Save();
                     if ((kind == "place" || kind=="parked"&&data["status"]?.GetValue<string>()=="ready") && activePlace != null && state["places"]![activePlace]?["status"]?.GetValue<string>()=="ready") ShowPlace(activePlace);
                 }
@@ -254,16 +274,7 @@ sealed class Companion : Form
                 if (sent == HttpStatusCode.OK || (sent==HttpStatusCode.NotFound && item?["kind"]?.GetValue<string>()=="tool_result")) { outgoing.Remove(item); Save(); }
             }
             if (moodUntil > 0 && moodUntil < DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) { moodUntil = 0; SetCharacter(current ?? "tuck", "idle"); }
-            var input = new LastInput { Size = (uint)Marshal.SizeOf<LastInput>() };
-            bool idle = GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Time) >= 120000;
-            if (idle && !away) {
-                string id = Guid.NewGuid().ToString();
-                var title = new StringBuilder(256); GetWindowText(GetForegroundWindow(), title, title.Capacity);
-                state["places"]!.AsObject()[id] = new JsonObject { ["sentence"] = "", ["status"] = "waiting" };
-                outgoing.Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["kind"] = "idle", ["payload"] = new JsonObject { ["place_id"] = id, ["app"] = title.ToString()[..Math.Min(title.Length,120)] } }); Save();
-            }
-            if (away && !idle && activePlace != null) ShowPlace(activePlace);
-            away = idle;
+
         }
         catch { failures = Math.Min(failures + 1, 4); }
         finally { busy = false; if (token != null) Schedule(Math.Min(60000, 1000 * (1 << failures))); }
@@ -281,9 +292,12 @@ sealed class Companion : Form
     }
     void Save() { string temp = stateFile + ".tmp"; File.WriteAllText(temp, state.ToJsonString()); File.Move(temp, stateFile, true); }
     void ShowParked() {
-        var parked = state["places"]!.AsObject().LastOrDefault(x => x.Value?["status"]?.GetValue<string>() == "parked");
-        if (parked.Key != null) ShowPlace(parked.Key); else MessageBox.Show("No parked Places.", "Pico");
+        using var form=new Form{Text="Parked Places",ClientSize=new Size(600,410),StartPosition=FormStartPosition.CenterScreen,Font=new Font("Segoe UI",10)};
+        var list=new ListBox{Dock=DockStyle.Fill,IntegralHeight=false};var ids=new List<string>();
+        foreach(var item in state["places"]!.AsObject().Reverse())if(item.Value?["status"]?.GetValue<string>()!="finished"){ids.Add(item.Key);string text=item.Value?["sentence"]?.GetValue<string>()??"";list.Items.Add(text.Length>0?text:"Working in "+(item.Value?["app"]?.GetValue<string>()??"an app"));}
+        var open=new Button{Text="Open selected",Dock=DockStyle.Bottom,Height=40};open.Click+=(_,_)=>{if(list.SelectedIndex>=0)ShowPlaceDetails(ids[list.SelectedIndex]);};form.Controls.Add(list);form.Controls.Add(open);form.ShowDialog(this);
     }
+
     void ShowPlace(string id) {
         var place = state["places"]![id]!;
         if (place["status"]?.GetValue<string>() == "finished") return;
@@ -295,7 +309,8 @@ sealed class Companion : Form
     void ShowPlaceDetails(string id) {
         var place = state["places"]![id]!;
         string sentence = place["sentence"]?.GetValue<string>() ?? "";
-        if (sentence.Length == 0 || place["status"]?.GetValue<string>() == "finished") return;
+        if (place["status"]?.GetValue<string>() == "finished") return;
+        if(sentence.Length==0)sentence="Working in "+(place["app"]?.GetValue<string>()??"an app");
         var form = new Form { Text = "Welcome back", ClientSize = new Size(380,220), StartPosition = FormStartPosition.CenterScreen, Font = new Font("Segoe UI",10), MaximizeBox = false, FormBorderStyle = FormBorderStyle.FixedDialog };
         var title = new Label { Text = "Welcome back", Location = new Point(20,20), AutoSize = true, Font = new Font("Segoe UI",17,FontStyle.Bold) };
         var text = new Label { Text = sentence, Location = new Point(20,62), Size = new Size(340,85) };
@@ -303,7 +318,15 @@ sealed class Companion : Form
         var park = new Button { Text = "Park it", Location = new Point(196,160), Size = new Size(164,36) };
         resume.Click += (_,_) => { Clipboard.SetText(sentence); place["status"] = "finished"; Save(); form.Close(); };
         park.Click += (_,_) => { place["status"] = "parked"; state["outgoing"]!.AsArray().Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["kind"] = "parked", ["payload"] = new JsonObject { ["place_id"] = id, ["sentence"] = sentence } }); Save(); form.Close(); };
-        form.Controls.AddRange([title,text,resume,park]); form.Show();
+        form.Controls.AddRange([title,text,resume,park]);
+        string? snapshot=place["snapshot"]?.GetValue<string>();
+        string snapshotRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),"PICO Places")+Path.DirectorySeparatorChar;
+        if(snapshot!=null&&Path.GetFullPath(snapshot).StartsWith(snapshotRoot,StringComparison.OrdinalIgnoreCase)&&File.Exists(snapshot)) {
+            form.ClientSize=new Size(560,470);text.Width=520;resume.Top=420;park.Top=420;
+            using var original=Image.FromFile(snapshot);var preview=new PictureBox{Image=new Bitmap(original),SizeMode=PictureBoxSizeMode.Zoom,Location=new Point(20,150),Size=new Size(520,255)};
+            form.Controls.Add(preview);form.FormClosed+=(_,_)=>preview.Image?.Dispose();
+        }
+        form.Show();
     }
     [StructLayout(LayoutKind.Sequential)] struct LastInput { public uint Size; public uint Time; }
     [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LastInput input);

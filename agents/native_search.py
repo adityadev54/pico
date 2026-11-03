@@ -32,7 +32,7 @@ def granted_roots(grants: list[dict], access: str | None = None) -> list[Path]:
     roots = []
     for grant in grants or []:
         level = grant.get("access", "read")
-        if access == "write" and level != "write":
+        if access is not None and {"read":0,"write":1,"delete":2}.get(level,-1) < {"read":0,"write":1,"delete":2}.get(access,99):
             continue
         path = Path(str(grant.get("path", ""))).expanduser().resolve()
         if path.is_dir():

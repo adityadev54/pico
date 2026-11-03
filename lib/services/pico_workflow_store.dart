@@ -32,7 +32,7 @@ extension PicoWorkflowStore on PicoStore {
       error = null;
       await refreshTasks();
     } catch (e) {
-      error = e.toString();
+      error = relayErrorMessage(e);
       _changed();
     }
   }
@@ -58,7 +58,7 @@ extension PicoWorkflowStore on PicoStore {
       error = null;
       await refreshTasks();
     } catch (e) {
-      error = e.toString();
+      error = relayErrorMessage(e);
     } finally {
       busy = false;
       _changed();

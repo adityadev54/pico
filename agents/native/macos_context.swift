@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 let excluded: [String] = CommandLine.arguments.count > 3
     ? ((try? JSONSerialization.jsonObject(with: Data(CommandLine.arguments[3].utf8))) as? [String] ?? []) : []
-var result: [String: Any] = ["idle": CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .null), "screen_access": CGPreflightScreenCaptureAccess()]
+var result: [String: Any] = ["idle": CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!), "screen_access": CGPreflightScreenCaptureAccess()]
 if let app = NSWorkspace.shared.frontmostApplication {
     result["app"] = app.localizedName ?? "Unknown app"
     result["bundle"] = app.bundleIdentifier ?? ""

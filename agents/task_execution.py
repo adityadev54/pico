@@ -5,17 +5,19 @@ from app_access import approved_apps,open_selected
 from native_search import NativeError,transfer_evidence
 from tools import TOOL_REGISTRY,ToolError
 from handlers import dispatch,bounded_json
-SAFE_TOOLS={'search_documents','read_back_file','fs_list','fs_read','fs_write','process_run','fetch_upload','organize_photos','open_document','open_website','open_app','manage_permissions','transfer_selected_file'}
-WRITE_TOOLS={'fs_write','process_run','fetch_upload','organize_photos'}
-REVIEW_TOOLS=WRITE_TOOLS|{'open_document','open_website'}
+SAFE_TOOLS={'delete_files','restore_deleted','archive','empty_trash','convert_file','pdf_pages','search_documents','read_back_file','fs_list','fs_read','fs_write','process_run','fetch_upload','organize_photos','open_document','open_website','open_app','manage_permissions','transfer_selected_file'}
+WRITE_TOOLS={'restore_deleted','archive','convert_file','pdf_pages','fs_write','process_run','fetch_upload','organize_photos'}
+DELETE_TOOLS={'delete_files','empty_trash'}
+REVIEW_TOOLS=WRITE_TOOLS|DELETE_TOOLS|{'open_document','open_website'}
 def grant_id(path):return hashlib.sha256(str(Path(path).resolve()).encode()).hexdigest()[:32]
 def capabilities(state):
- return {'workflow_version':2,'workspaces':[{'id':grant_id(g['path']),'name':Path(g['path']).name,'access':g.get('access','read')} for g in state.get('grants',[]) if isinstance(g,dict) and g.get('path') and Path(g['path']).is_dir() and Path(g['path']).resolve()==Path(g['path']).absolute()]}
-def execute(payload,state,platform,notify=lambda:None,client=None,approve=None,cancelled=lambda:False,register_cancel=None,unregister_cancel=None):
+ return {'file_tools':['delete_files','restore_deleted','archive','empty_trash'],'document_tools':['convert_file','pdf_pages'],'workflow_version':2,'workspaces':[{'id':grant_id(g['path']),'name':Path(g['path']).name,'access':g.get('access','read')} for g in state.get('grants',[]) if isinstance(g,dict) and g.get('path') and Path(g['path']).is_dir() and Path(g['path']).resolve()==Path(g['path']).absolute()]}
+def execute(payload,state,platform,notify=lambda:None,client=None,approve=None,cancelled=lambda:False,register_cancel=None,unregister_cancel=None,refresh_grants=None,request_grant=None):
  tool=payload.get('tool','');result={'task_id':str(payload.get('task_id','')),'call_id':str(payload.get('call_id',''))}
  try:
   if int(payload.get('expires_at','0'))<int(time.time()*1000):raise NativeError('timeout','This request expired. Send it again.')
   if cancelled():raise NativeError('cancelled','Cancelled before execution.')
+  if refresh_grants:state['grants']=refresh_grants()
   start=client.post('/agent/start',{'task_id':payload['task_id']}) if client is not None and hasattr(client,'post') else {}
   if start.get('cancelled'):raise NativeError('cancelled','This request was cancelled.')
   if tool not in SAFE_TOOLS:raise NativeError('unsupported_tool','This tool is not enabled in the desktop companion.')
@@ -29,10 +31,17 @@ def execute(payload,state,platform,notify=lambda:None,client=None,approve=None,c
   else:
    grants=[dict(g) for g in state.get('grants',[]) if isinstance(g,dict) and isinstance(g.get('path'),str) and g['path'].strip() and Path(g['path']).is_dir() and Path(g['path']).resolve()==Path(g['path']).absolute()]
    if payload.get('grant_id'):grants=[g for g in grants if grant_id(g['path'])==payload['grant_id']]
+   if tool in ('search_documents','open_document') and not grants and request_grant and not payload.get('grant_id'):
+    approved=request_grant('delete' if tool in DELETE_TOOLS else 'write' if tool in WRITE_TOOLS else 'read')
+    if approved:grants=[approved]
    if tool not in ('manage_permissions','open_website') and not grants:raise NativeError('permission_denied','Choose a folder in the computer permissions first.')
    if tool in WRITE_TOOLS:
-    grants=[g for g in grants if g.get('access')=='write']
+    grants=[g for g in grants if g.get('access') in ('write','delete')]
     if not grants:raise NativeError('permission_denied','Choose a folder with write access on this computer first.')
+   if tool in DELETE_TOOLS:
+    grants=[g for g in grants if g.get('access')=='delete']
+    if not grants:raise NativeError('permission_denied','Choose explicit trash access for this folder in Permissions first.')
+   if cancelled() or int(payload.get('expires_at','0'))<int(time.time()*1000):raise NativeError('timeout','This request expired while waiting for folder access.')
    args=TOOL_REGISTRY.validate(tool,payload)
    if tool=='process_run':
     argv=json.loads(args['argv_json'])
@@ -45,10 +54,11 @@ def execute(payload,state,platform,notify=lambda:None,client=None,approve=None,c
     if key in args and any(p.startswith('.') and p not in ('.','..') for p in Path(args[key]).parts):raise NativeError('permission_denied','Hidden files are outside this workflow.')
    if tool in REVIEW_TOOLS:
     review={'tool':tool,'arguments':args,'folder':str(Path(grants[0]['path']).resolve()) if grants else '', 'task_id':payload.get('task_id','')}
-    phone_approved=start.get('phone_approved') is True and tool!='process_run'
+    phone_approved=start.get('phone_approved') is True and tool not in ('process_run','empty_trash')
     if not phone_approved and (approve is None or not approve(review)):raise NativeError('permission_denied','Not approved on this computer.')
     if client is not None and hasattr(client,'post') and client.post('/agent/start',{'task_id':payload['task_id']}).get('cancelled'):raise NativeError('cancelled','This request was cancelled.')
-    if grants and not all(any(current.get('path')==g['path'] and (tool not in WRITE_TOOLS or current.get('access')=='write') for current in state.get('grants',[])) for g in grants):raise NativeError('permission_denied','Folder permission changed before approval.')
+    if refresh_grants:state['grants']=refresh_grants()
+    if grants and not all(any(current.get('path')==g['path'] and (tool not in WRITE_TOOLS or current.get('access') in ('write','delete')) and (tool not in DELETE_TOOLS or current.get('access')=='delete') for current in state.get('grants',[])) for g in grants):raise NativeError('permission_denied','Folder permission changed before approval.')
     if cancelled() or int(payload['expires_at'])<int(time.time()*1000):raise NativeError('timeout','This request expired or was cancelled before approval.')
    def transfer(raw,ev):
     if client is None:raise NativeError('device_offline','Transfer connection unavailable.')
@@ -58,7 +68,7 @@ def execute(payload,state,platform,notify=lambda:None,client=None,approve=None,c
    def fetch(identity):
     if client is None:raise NativeError('device_offline','Upload connection unavailable.')
     return base64.b64decode(client.post('/agent/artifact',{'id':identity})['content_base64'],validate=True)
-   ctx={'grants':grants,'notify':notify,'transfer':transfer,'fetch_artifact':fetch,'cancelled':cancelled}
+   ctx={'grants':grants,'refresh_grants':refresh_grants,'current_grants':lambda:state.get('grants',[]),'notify':notify,'transfer':transfer,'fetch_artifact':fetch,'cancelled':lambda:cancelled() or int(payload.get('expires_at','0')) < int(time.time()*1000)}
    if register_cancel:ctx.update(register_cancel=register_cancel,unregister_cancel=unregister_cancel or (lambda:None))
    data,evidence=dispatch(tool,args,ctx)
    if tool=='process_run' and (data.get('timed_out') or data.get('cancelled') or data.get('exit_code')!=0):raise NativeError('timeout' if data.get('timed_out') else 'process_failed','The command did not finish successfully. '+str(data.get('stderr',''))[:100])

@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import 'settings_screen.dart';
 import 'search_screen.dart';
 import 'devices_screen.dart';
+import '../components/camera_capture.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.store});
@@ -188,6 +189,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _dispatch(String value) async {
+    if (await store.handleLocalPlay(value)) return true;
+    if (!mounted) return false;
+    if (store.reviewRoutineRequest(value)) {
+      _composerFocus.unfocus();
+      return true;
+    }
     // Supported computer actions run as tasks; other speech stays a Place.
     if (store.linked && await dispatchComputerAction(context, store, value)) {
       if (!mounted) return false;
@@ -195,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (looksLikeCommand(value)) {
         _notice(
           store.linked
-              ? 'Action not started. For a file, try “Create a file called test.txt saying Hello”. For a draft, use “Ask Pico: Draft a three-item checklist into checklist.txt”.'
+              ? 'That action isn’t available yet. You can choose a file action or open Watch & repeat from +.'
               : 'Action not started. Connect a computer in Devices first.',
         );
         return false;
@@ -370,6 +377,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                 store.mood == 'listening',
                                             busy: store.busy,
                                             onVoice: _voice,
+                                            onCamera: () =>
+                                                sendPhoto(context, store),
+                                            onRoutines: () {
+                                              _composerFocus.unfocus();
+                                              store.showRoutines();
+                                            },
                                             onSend: _send,
                                           ),
                                       ],

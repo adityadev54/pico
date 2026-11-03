@@ -389,7 +389,17 @@ def note_cancelled(cancelled, running, task_id):
     return running.pop(task_id, None)
 
 
+from document_tools import convert_file_handler, pdf_pages_handler
+
+from file_management import delete_files_handler, restore_deleted_handler, archive_handler, empty_trash_handler
+
 HANDLERS = {
+    'delete_files':delete_files_handler,
+    'restore_deleted':restore_deleted_handler,
+    'archive':archive_handler,
+    'empty_trash':empty_trash_handler,
+    'convert_file': convert_file_handler,
+    'pdf_pages': pdf_pages_handler,
     'search_documents': search_documents_handler,
     'transfer_selected_file': transfer_selected_file_handler,
     'read_back_file': read_back_file_handler,

@@ -1,4 +1,5 @@
 """Private, JSON-only mail objects. Stores Pico messages separately from account chat tables."""
+import os,re
 import urllib.error
 from .service import ApiError
 
@@ -17,7 +18,9 @@ class Mailbox:
             self.database.request('/storage/v1/bucket', {'id':self.bucket,'name':self.bucket,'public':False,'file_size_limit':16000,'allowed_mime_types':['application/json']}, 'POST')
 
     def prefix(self, owner, device, phone):
-        return f'{owner}/{device}/'+('phone' if phone else 'computer')
+        namespace=os.environ.get('PICO_MAIL_NAMESPACE','')
+        if namespace and not re.fullmatch(r'[a-z0-9-]{1,30}',namespace):raise ValueError('Invalid mailbox namespace.')
+        return f'{owner}/{device}/'+(namespace+'/' if namespace else '')+('phone' if phone else 'computer')
 
     def list(self, owner, device, phone=False):
         prefix=self.prefix(owner,device,phone)

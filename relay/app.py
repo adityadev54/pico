@@ -99,6 +99,9 @@ def make_handler(service):
                 if path.startswith('/agent/'):
                     device = service.device(token)
                     owner, id = device['user_id'], device['id']
+                    if path == '/agent/skills/model' and method == 'POST':
+                        from server.skills.model import complete
+                        return self.send(200,complete(owner,body))
                     if path == '/agent/start' and method == 'POST':
                         rows=service.db.db('tasks',{'id':'eq.'+identifier(body.get('task_id')),'user_id':'eq.'+owner,'device_id':'eq.'+id})
                         if not rows:raise ApiError(404,'Request not found.')
@@ -114,7 +117,7 @@ def make_handler(service):
                     if path == '/agent/ack' and method == 'POST':
                         return self.send(200, service.acknowledge(owner, id, body.get('ids', [])))
                     if path == '/agent/mail' and method == 'POST':
-                        if body.get('kind') not in ('idle', 'head_start', 'parked', 'tool_result', 'app_catalog', 'app_result'):
+                        if body.get('kind') not in ('idle', 'head_start', 'parked', 'tool_result', 'app_catalog', 'app_result', 'skill_result'):
                             raise ApiError(400, 'Unsupported computer message.')
                         if body.get('kind') == 'tool_result':
                             service.complete_tool_result(owner, id, body.get('payload', {}))
@@ -143,7 +146,7 @@ def make_handler(service):
                     if path == '/pairing' and method == 'POST':
                         return self.send(200, service.pairing(owner))
                     if path == '/mail' and method == 'POST':
-                        if body.get('kind') not in ('place', 'companion', 'apps_request', 'open_app', 'parked'):
+                        if body.get('kind') not in ('place', 'companion', 'apps_request', 'open_app', 'parked', 'skill_request'):
                             raise ApiError(400, 'Unsupported phone message.')
                         return self.send(200, service.enqueue(owner, identifier(body.get('device_id')), body['kind'], body.get('payload', {}), body.get('id')))
                     if path == '/unpair' and method == 'POST':
@@ -220,12 +223,12 @@ def make_handler(service):
                     file = base/'index.html'
             elif path.startswith('/download/'):
                 filename = path.removeprefix('/download/')
-                if filename not in ('Pico-source.zip','Pico-macOS.dmg','Pico-Setup.exe','Pico-Android.apk','SHA256SUMS'):
+                if filename not in ('Pico-source.zip','Pico-macOS.dmg','Pico-Setup.exe','Pico-Android.apk','SHA256SUMS','release.json'):
                     return False
                 file = ROOT/'downloads'/filename
             elif path.startswith('/characters/'):
                 parts = path.removeprefix('/characters/').split('/')
-                if len(parts) != 2 or parts[0] not in ('tuck','mica') or parts[1] not in ('idle.gif','idle.png','working.gif','needsYou.gif'):
+                if len(parts) != 2 or parts[0] not in ('tuck','mica') or parts[1] not in ('idle.gif','idle.png','working.gif','needsYou.gif','emotions.png'):
                     return False
                 file = ROOT/'assets/characters'/parts[0]/parts[1]
             else:

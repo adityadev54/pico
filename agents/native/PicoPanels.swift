@@ -7,6 +7,13 @@ final class TopAlignedClipView: NSClipView { override var isFlipped: Bool { true
 /// Companion panels use native semantic colors and AppKit controls in both appearances.
 final class CompanionPanels: NSObject {
     let emit: ([String:Any])->Void
+    var privacyExpanded = false
+    var teaching: NSWindow?
+    var placesWindow: NSWindow?
+    var teachRoot = ""
+    var teachSources: [String] = []
+    var teachOutput = ""
+    var teachName = NSTextField()
     var applications: NSWindow?
     var permissions: NSWindow?
     var welcome: NSWindow?
@@ -22,7 +29,7 @@ final class CompanionPanels: NSObject {
         view.textColor = .labelColor
         return view
     }
-    func stack(_ views:[NSView], vertical:Bool = true, spacing:CGFloat = 12) -> NSStackView {
+    func stack(_ views:[NSView], vertical:Bool = true, spacing:CGFloat = 8) -> NSStackView {
         views.forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
         let result = NSStackView(views:views); result.orientation = vertical ? .vertical : .horizontal
         result.alignment = vertical ? .leading : .centerY; result.spacing = spacing
@@ -30,38 +37,74 @@ final class CompanionPanels: NSObject {
         return result
     }
     func button(_ title:String, _ action:Selector) -> NSButton {
-        let b = NSButton(title:title,target:self,action:action);b.bezelStyle = .rounded;return b
+        let b = NSButton(title:title,target:self,action:action);b.bezelStyle = .rounded
+        b.controlSize = .small;b.font = .systemFont(ofSize:12)
+        b.setContentHuggingPriority(.defaultHigh,for:.horizontal)
+        return b
     }
     func panel(_ title:String, width:CGFloat, height:CGFloat) -> NSWindow {
         let w = NSWindow(contentRect:NSRect(x:0,y:0,width:width,height:height),styleMask:[.titled,.closable],backing:.buffered,defer:false)
-        w.title = title; w.isReleasedWhenClosed = false; w.center()
+        w.contentMinSize = NSSize(width:width,height:min(height,380));w.title = title; w.isReleasedWhenClosed = false; w.center()
         return w
     }
-    func mount(_ content:NSView, in window:NSWindow, inset:CGFloat = 24) {
+    func mount(_ content:NSView, in window:NSWindow, inset:CGFloat = 18) {
         guard let host = window.contentView else {return}
         host.subviews.forEach{$0.removeFromSuperview()};content.translatesAutoresizingMaskIntoConstraints = false;host.addSubview(content)
         NSLayoutConstraint.activate([content.leadingAnchor.constraint(equalTo:host.leadingAnchor,constant:inset),content.trailingAnchor.constraint(equalTo:host.trailingAnchor,constant:-inset),content.topAnchor.constraint(equalTo:host.topAnchor,constant:inset),content.bottomAnchor.constraint(equalTo:host.bottomAnchor,constant:-inset)])
     }
-    func show(_ window:NSWindow) {window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)}
+    func show(_ window:NSWindow) {
+        window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
+        // Apply after the initial Auto Layout pass, which can otherwise shrink
+        // a newly mounted scrolling panel to its text field's fitting width.
+        if window.title == "Teach Pico" || window.title == "Pico permissions" {
+            DispatchQueue.main.async {
+                let size = window.title == "Teach Pico" ? NSSize(width:680,height:360) : NSSize(width:650,height:640)
+                window.setContentSize(size)
+                if ProcessInfo.processInfo.environment["PICO_LAYOUT_DIAGNOSTICS"] == "1" {
+                    fputs("Pico panel \(window.title): \(window.frame) content \(window.contentView?.frame ?? .zero)\n",stderr)
+                }
+            }
+        }
+    }
     func section(_ title:String, _ rows:[NSView])->NSView {
-        let titleView = label(title,size:11,bold:true);titleView.textColor = .secondaryLabelColor
+        let symbols = ["Your routines":"arrow.triangle.2.circlepath", "Apps Pico can open":"app", "Approved folders":"folder", "Hold my place":"bookmark", "Head Start":"sparkles", "Never snapshot these apps":"eye.slash", "Snapshots folder":"photo", "Phone":"iphone"]
+        let titleLabel = label(title,size:12,bold:true);titleLabel.textColor = .secondaryLabelColor
+        let icon = NSImageView();icon.image = NSImage(systemSymbolName:symbols[title] ?? "gearshape",accessibilityDescription:nil);icon.contentTintColor = .secondaryLabelColor
+        icon.widthAnchor.constraint(equalToConstant:16).isActive = true;icon.heightAnchor.constraint(equalToConstant:16).isActive = true
+        let titleView = stack([icon,titleLabel],vertical:false,spacing:6)
         let group = NSBox();group.boxType = .custom;group.borderWidth = 0;group.cornerRadius = 10;group.fillColor = .quaternaryLabelColor
         group.translatesAutoresizingMaskIntoConstraints = false
         permissionGroups.append(group)
-        let body = stack(rows);body.translatesAutoresizingMaskIntoConstraints = false;group.contentView?.addSubview(body)
-        if let container = group.contentView {NSLayoutConstraint.activate([body.leadingAnchor.constraint(equalTo:container.leadingAnchor,constant:12),body.trailingAnchor.constraint(equalTo:container.trailingAnchor,constant:-12),body.topAnchor.constraint(equalTo:container.topAnchor,constant:12),body.bottomAnchor.constraint(equalTo:container.bottomAnchor,constant:-12)])}
-        for row in rows {row.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
+        let compactRows = rows.map { row -> NSView in
+            guard row is NSButton else { return row }
+            let spacer = NSView();spacer.setContentHuggingPriority(.defaultLow,for:.horizontal)
+            return stack([row,spacer],vertical:false)
+        }
+        let body = stack(compactRows);body.translatesAutoresizingMaskIntoConstraints = false;group.contentView?.addSubview(body)
+        if let container = group.contentView {NSLayoutConstraint.activate([body.leadingAnchor.constraint(equalTo:container.leadingAnchor,constant:10),body.trailingAnchor.constraint(equalTo:container.trailingAnchor,constant:-10),body.topAnchor.constraint(equalTo:container.topAnchor,constant:10),body.bottomAnchor.constraint(equalTo:container.bottomAnchor,constant:-10)])}
+        for row in compactRows {row.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
         let result = stack([titleView,group],spacing:8)
         group.widthAnchor.constraint(equalTo:result.widthAnchor).isActive = true
         return result
     }
     func check(_ title:String,key:String,enabled:Bool = true)->NSButton {
         let view = NSButton(checkboxWithTitle:title,target:self,action:#selector(changeCheck(_:)))
-        view.identifier = NSUserInterfaceItemIdentifier(key);view.state = (settings[key] as? Bool ?? false) ? .on : .off;view.isEnabled = enabled
+        view.identifier = NSUserInterfaceItemIdentifier(key);view.state = enabled && (settings[key] as? Bool ?? false) ? .on : .off;view.isEnabled = enabled
         return view
     }
     func handle(_ command:String,payload:String) {
         guard let data = payload.data(using:.utf8),let value = try? JSONSerialization.jsonObject(with:data) as? [String:Any] else{return}
+        if command == "folder_grant" {
+            let access = value["access"] as? String ?? "read"
+            guard ["read","write","delete"].contains(access) else{return}
+            let picker = NSOpenPanel();picker.canChooseDirectories = true;picker.canChooseFiles = false
+            picker.title = "Pico folder access";picker.message = access == "delete" ? "Choose a folder for read, write and reviewed trash actions." : "Choose a folder for " + access + " access. You can revoke it in Permissions."
+            picker.prompt = "Allow " + access
+            let selected = picker.runModal() == .OK ? picker.url?.path ?? "" : ""
+            emit(["action":"folder_grant","id":value["id"] as? String ?? "","path":selected])
+        }
+        if command == "teach" {showTeaching(value)}
+        if command == "places" {showPlaces(value)}
         if command == "permissions" { settings = value;showPermissions() }
         if command == "applications" { settings = value;showApplications() }
         if command == "welcome" {showWelcome(value)}
@@ -82,24 +125,24 @@ final class CompanionPanels: NSObject {
     }
     func showPermissions() {
         permissionGroups = []
-        let window = permissions ?? panel("Pico permissions",width:580,height:720);permissions = window
+        let window = permissions ?? panel("Pico permissions",width:650,height:640);permissions = window
         let scroll = NSScrollView();scroll.hasVerticalScroller = true;scroll.drawsBackground = false;scroll.contentView = TopAlignedClipView();scroll.autohidesScrollers = true
         let body = stack([]);preferencesStack = body;body.edgeInsets = NSEdgeInsets(top:0,left:0,bottom:12,right:0)
         scroll.documentView = body;body.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([body.leadingAnchor.constraint(equalTo:scroll.contentView.leadingAnchor),body.trailingAnchor.constraint(equalTo:scroll.contentView.trailingAnchor),body.topAnchor.constraint(equalTo:scroll.contentView.topAnchor),body.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor)])
-        let title = label("Let Pico hold your place",size:23,bold:true)
-        let subtitle = label("Changes save as you go.");subtitle.textColor = .secondaryLabelColor
+        let title = label("Permissions",size:17,bold:true)
+        let subtitle = label("Changes save automatically.");subtitle.textColor = .secondaryLabelColor
         let interval = NSPopUpButton();interval.addItems(withTitles:["1 minute","2 minutes","5 minutes"])
         interval.selectItem(at:[1,2,5].firstIndex(of:settings["idle_minutes"] as? Int ?? 2) ?? 1);interval.target = self;interval.action = #selector(changeInterval(_:))
-        let idle = stack([check("Notice when I step away",key:"notice_idle"),interval],vertical:false)
-        let screen = CGPreflightScreenCaptureAccess()
+        let idle = stack([check("Step-away timer",key:"notice_idle"),interval],vertical:false)
+        let screen = settings["screen_access"] as? Bool ?? false
         let status = label(screen ? "Screen access allowed" : "Screen access not granted",size:12);status.textColor = .secondaryLabelColor
-        let access = stack([status,button("Open System Settings",#selector(openScreenSettings))],vertical:false)
-        let hold = section("Hold my place",[idle,check("Snapshot the window I’m working in",key:"snapshots"),access])
+        let access = stack([status,button("Settings…",#selector(openScreenSettings))],vertical:false)
+        let hold = section("Hold my place",[idle,check("Capture my active window",key:"snapshots",enabled:screen),access,check("Reopen the app when I continue",key:"reopen")])
         let configured = settings["model_configured"] as? Bool ?? false
-        let modelHint = label(configured ? "Uses your configured model provider." : "Head Start is not connected yet.",size:12);modelHint.textColor = .secondaryLabelColor
-        let head = section("Head Start",[check("Prepare my next step while I’m away",key:"prepare",enabled:configured),check("Allow the snapshot to be sent to my model provider",key:"share_snapshot",enabled:configured),check("Reopen the app when I continue",key:"reopen"),modelHint])
-        var exclusions:[NSView] = [label("Choose apps that Pico should never snapshot.",size:12)]
+        let modelHint = label(configured ? "Uses your configured model provider." : "Head Start is unavailable in this build. Taught routines uses Muse.",size:12);modelHint.textColor = .secondaryLabelColor
+        let head = section("Head Start",[check("Prepare my next step",key:"prepare",enabled:configured),check("Share snapshots with my provider",key:"share_snapshot",enabled:configured),check("Reopen the app when I continue",key:"reopen"),modelHint])
+        var exclusions:[NSView] = [label("Excluded from screen capture.",size:12)]
         for item in settings["excluded_apps"] as? [[String:String]] ?? [] {
             let name = label(item["name"] ?? "App")
             let remove = button("Remove",#selector(removeApp(_:)));remove.identifier = NSUserInterfaceItemIdentifier(item["bundle"] ?? "")
@@ -109,7 +152,13 @@ final class CompanionPanels: NSObject {
         let apps = section("Never snapshot these apps",exclusions)
         let retention = NSPopUpButton();retention.addItems(withTitles:["1 day","7 days","30 days"]);retention.selectItem(at:[1,7,30].firstIndex(of:settings["retention_days"] as? Int ?? 7) ?? 1);retention.target = self;retention.action = #selector(changeRetention(_:))
         let files = section("Snapshots folder",[label("Pictures / PICO Places",size:12),stack([label("Keep finished snapshots for",size:12),retention],vertical:false),stack([button("Open folder",#selector(openFolder)),button("Clear snapshots…",#selector(clearSnapshots))],vertical:false)])
-        for view in [title,subtitle,appAccessSection(),folderAccessSection(),hold,head,apps,files] {body.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
+        let routines = section("Your routines",[stack([button("Teach a routine…",#selector(openTeaching)),button("Parked Places",#selector(openPlaces))],vertical:false)])
+        var sections:[NSView] = [title,subtitle,routines,appAccessSection(),folderAccessSection(),hold]
+        if configured {sections.append(head)}
+        let privacy = button("Privacy & storage",#selector(togglePrivacy));privacy.image = NSImage(systemSymbolName:privacyExpanded ? "chevron.down" : "chevron.right",accessibilityDescription:nil);privacy.imagePosition = .imageLeading
+        sections.append(privacy)
+        if privacyExpanded {sections += [apps,files]}
+        for view in sections {body.addArrangedSubview(view);view.widthAnchor.constraint(equalTo:body.widthAnchor).isActive = true}
         let paired = settings["paired"] as? Bool ?? false
         var connection:[NSView] = [label(paired ? "Paired with your account" : "No phone paired",size:13)]
         if paired {connection.append(button("Unpair…",#selector(unpair)))}
@@ -122,8 +171,11 @@ final class CompanionPanels: NSObject {
         scroll.widthAnchor.constraint(equalTo:outer.widthAnchor).isActive = true
         footer.widthAnchor.constraint(equalTo:outer.widthAnchor).isActive = true
         mount(outer,in:window);show(window)
+        window.styleMask.insert(.resizable)
+        window.setContentSize(NSSize(width:650,height:640))
         if CommandLine.arguments.contains("--verify-layout") {DispatchQueue.main.async {window.contentView?.layoutSubtreeIfNeeded();self.emit(["permission_widths":self.permissionGroups.map{$0.frame.width}])}}
     }
+    @objc func togglePrivacy(){privacyExpanded.toggle();showPermissions()}
     func save(){emit(["action":"preferences","values":settings])}
     @objc func changeCheck(_ sender:NSButton){guard let key = sender.identifier?.rawValue else{return};settings[key] = sender.state == .on;save()}
     @objc func changeInterval(_ sender:NSPopUpButton){settings["idle_minutes"] = [1,2,5][sender.indexOfSelectedItem];save()}
@@ -136,7 +188,9 @@ final class CompanionPanels: NSObject {
         apps.append(["name":url.deletingPathExtension().lastPathComponent,"bundle":bundle]);settings["excluded_apps"] = apps;save();showPermissions()
     }
     @objc func removeApp(_ sender:NSButton){let id = sender.identifier?.rawValue;settings["excluded_apps"] = (settings["excluded_apps"] as? [[String:String]] ?? []).filter{$0["bundle"] != id};save();showPermissions()}
-    @objc func openScreenSettings(){if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"){NSWorkspace.shared.open(url)}}
+    @objc func openTeaching(){emit(["action":"show_teach"])}
+    @objc func openPlaces(){emit(["action":"show_places"])}
+    @objc func openScreenSettings(){emit(["action":"request_screen_access"]);if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"){NSWorkspace.shared.open(url)}}
     @objc func openFolder(){let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/PICO Places");try? FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true);NSWorkspace.shared.open(folder)}
     @objc func clearSnapshots(){let alert = NSAlert();alert.messageText = "Clear Pico snapshots?";alert.informativeText = "This removes snapshots saved by Pico. Your sentences stay saved.";alert.addButton(withTitle:"Cancel");alert.addButton(withTitle:"Clear snapshots");if alert.runModal() == .alertSecondButtonReturn{emit(["action":"clear_snapshots"])}}
     @objc func unpair(){let alert = NSAlert();alert.messageText = "Unpair this computer?";alert.addButton(withTitle:"Keep connected");alert.addButton(withTitle:"Unpair");if alert.runModal() == .alertSecondButtonReturn{emit(["action":"unpair"]);permissions?.close()}}

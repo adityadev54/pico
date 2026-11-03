@@ -73,14 +73,14 @@ void main() {
     expect(
       (surfaces.first.shape! as ChatBubbleShape).borderRadius
           .resolve(TextDirection.ltr)
-          .topRight,
-      Radius.zero,
+          .bottomRight,
+      const Radius.circular(5),
     );
     expect(
       (surfaces.last.shape! as ChatBubbleShape).borderRadius
           .resolve(TextDirection.ltr)
-          .topLeft,
-      Radius.zero,
+          .bottomLeft,
+      const Radius.circular(5),
     );
     await capturePreview(tester, 'speaker-tails');
     expect(tester.takeException(), isNull);

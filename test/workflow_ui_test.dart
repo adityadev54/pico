@@ -17,7 +17,9 @@ void main() {
     await font.load();
   });
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  testWidgets('Muse indicator reflects the reported status', (tester) async {
+  testWidgets('Home keeps connection status out of the floating toolbar', (
+    tester,
+  ) async {
     final store = PicoStore(await SharedPreferences.getInstance())
       ..museState = 'ready'
       ..museLabel = 'Muse connected';
@@ -34,7 +36,8 @@ void main() {
         ),
       ),
     );
-    expect(find.byTooltip('Muse connected'), findsOneWidget);
+    expect(find.byTooltip('Muse connected'), findsNothing);
+    expect(find.text('Muse'), findsNothing);
     store.dispose();
   });
   for (final dark in [false, true]) {

@@ -34,6 +34,59 @@ class WorkflowTests(unittest.TestCase):
   result=execute(mail['payload'],self.state,SimpleNamespace(),client=self.client,approve=approve_action)
   self.client.post('/agent/mail',{'kind':'tool_result','payload':result});self.client.post('/agent/ack',{'ids':[mail['id']]})
   return self.row(task)
+ def test_zip_trash_restore_and_empty_over_authenticated_http(self):
+  grant=grant_id(self.folder);self.state['grants'][0]['access']='delete'
+  (self.folder/'draft.txt').write_text('Disposable integration draft')
+  zipped=self.run_task(self.task('archive',{'action':'create','paths':['draft.txt'],'grant_id':grant},confirmed=True))
+  self.assertEqual(zipped['status'],'completed',zipped)
+  extracted=self.run_task(self.task('archive',{'action':'extract','paths':[zipped['result']['path']],'grant_id':grant},confirmed=True))
+  self.assertEqual(extracted['status'],'completed',extracted)
+  self.assertEqual((self.folder/extracted['result']['output']/'draft.txt').read_text(),'Disposable integration draft')
+  deleted=self.run_task(self.task('delete_files',{'path':'draft.txt','confirm':'DELETE','grant_id':grant},confirmed=True))
+  self.assertEqual(deleted['status'],'completed',deleted);self.assertFalse((self.folder/'draft.txt').exists())
+  restored=self.run_task(self.task('restore_deleted',{'name':'draft.txt','grant_id':grant},confirmed=True))
+  self.assertEqual(restored['status'],'completed',restored);self.assertEqual((self.folder/'draft.txt').read_text(),'Disposable integration draft')
+  self.run_task(self.task('delete_files',{'path':'draft.txt','confirm':'DELETE','grant_id':grant},confirmed=True))
+  denied=self.run_task(self.task('empty_trash',{'confirm':'EMPTY','grant_id':grant},confirmed=True),approve_action=lambda _:False)
+  self.assertEqual(denied['status'],'failed');self.assertTrue(list((self.folder/'.pico-trash').glob('*.data')))
+  empty=self.run_task(self.task('empty_trash',{'confirm':'EMPTY','grant_id':grant},confirmed=True))
+  self.assertEqual(empty['status'],'completed',empty);self.assertFalse(list((self.folder/'.pico-trash').glob('*.data')))
+
+ def test_camera_photo_to_pdf_and_authenticated_phone_receipt(self):
+  import io
+  from PIL import Image
+  from pypdf import PdfReader
+  photo=io.BytesIO();Image.new('RGB',(120,80),'white').save(photo,'JPEG');raw=photo.getvalue()
+  grant=grant_id(self.folder)
+  upload=self.post('/uploads',{'device_id':self.device,'name':'Homework photo.jpg','content_base64':base64.b64encode(raw).decode(),'purpose':'transfer','grant_id':grant})
+  original=self.run_task({'id':upload['task_id']});self.assertEqual(original['status'],'completed')
+  self.assertEqual((self.folder/'Homework photo.jpg').read_bytes(),raw)
+  with self.assertRaises(urllib.error.HTTPError):self.task('convert_file',{'path':'Homework photo.jpg','to':'pdf','grant_id':grant})
+  converted=self.run_task(self.task('convert_file',{'path':'Homework photo.jpg','to':'pdf','grant_id':grant},confirmed=True))
+  self.assertEqual(converted['status'],'completed',converted)
+  name=converted['result']['path'];pdf=(self.folder/name).read_bytes()
+  self.assertEqual(len(PdfReader(io.BytesIO(pdf)).pages),1)
+  self.assertEqual(hashlib.sha256(pdf).hexdigest(),converted['result']['digest'])
+  search=self.run_task(self.task('find_document',{'query':name,'grant_id':grant}));candidate=search['result']['candidates'][0]
+  transfer=self.run_task(self.task('send_file',{'search_task_id':search['id'],'candidate_id':candidate['candidate_id']}))
+  self.assertEqual(transfer['status'],'verifying')
+  received=base64.b64decode(self.post('/files/download',{'id':transfer['id']})['content_base64']);self.assertEqual(received,pdf)
+  self.post('/tasks/receipt',{'task_id':transfer['id'],'size_bytes':len(received),'digest':hashlib.sha256(received).hexdigest()})
+  self.assertEqual(self.row(transfer)['result']['receipt'],'verified')
+  self.assertEqual((self.folder/'Homework photo.jpg').read_bytes(),raw)
+ def test_pdf_merge_and_revoked_write_do_not_fake_success(self):
+  from pypdf import PdfWriter,PdfReader
+  for name in ('lecture.pdf','notes.pdf'):
+   writer=PdfWriter();writer.add_blank_page(72,72)
+   with (self.folder/name).open('wb') as f:writer.write(f)
+  result=self.run_task(self.task('pdf_pages',{'action':'merge','paths':['lecture.pdf','notes.pdf'],'grant_id':grant_id(self.folder)},confirmed=True))
+  self.assertEqual(result['status'],'completed',result)
+  self.assertEqual(len(PdfReader(self.folder/result['result']['path']).pages),2)
+  self.state['grants']=[]
+  failed=self.run_task(self.task('pdf_pages',{'action':'split','paths':[result['result']['path']],'pages':'1'},confirmed=True))
+  self.assertEqual(failed['status'],'failed')
+  self.assertEqual(failed['result']['error_code'],'permission_denied')
+
  def test_find_read_send_receive_exact_bytes(self):
   raw=b'Launch checklist: install, pair, verify.';(self.folder/'brief.txt').write_bytes(raw)
   search=self.run_task(self.task('find_document',{'query':'brief.txt'}));candidate=search['result']['candidates'][0]

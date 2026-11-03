@@ -1,0 +1,4 @@
+# Optional local document engine dependencies; no model provider required.
+pypdf==6.21.4
+Pillow==13.0.0
+python-docx==1.2.0

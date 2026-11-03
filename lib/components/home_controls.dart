@@ -29,39 +29,6 @@ class HomeControls extends StatelessWidget {
             label: 'Open menu',
             onTap: onMenu,
           ),
-          if (store != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Tooltip(
-                message: store!.museLabel,
-                child: Semantics(
-                  label: store!.museLabel,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: store!.museState == 'ready'
-                              ? const Color(0xFF66A577)
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Muse',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           const Spacer(),
           FloatingSurface(
             child: Padding(

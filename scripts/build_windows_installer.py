@@ -10,6 +10,8 @@ ROOT=Path(__file__).resolve().parents[1]
 relay=os.environ.get('PICO_RELAY_URL','https://pico-companion.fly.dev')
 config=ROOT/'agents/native/windows/RelayConfig.cs'
 config.write_text('internal static class RelayConfig { internal const string Url = '+json.dumps(relay)+'; }\n')
+from prepare_windows_runtime import prepare
+prepare()
 output=ROOT/'build/installer-windows'
 subprocess.run(['dotnet','publish',str(ROOT/'agents/native/windows/Pico.csproj'),'-c','Release','-r','win-x64','-o',str(output),'--nologo'],check=True)
 shutil.copy2(output/'Pico.exe',ROOT/'downloads/Pico-Setup.exe')

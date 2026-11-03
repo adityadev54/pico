@@ -30,6 +30,7 @@ extension PicoChatStore on PicoStore {
       .then((_) {});
 
   void loadPlaces() {
+    clearLocalPlay();
     composingNewChat = false;
     _hiddenTaskIds.clear();
     _newChatPlaceIds.clear();

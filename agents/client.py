@@ -20,7 +20,7 @@ class DeviceClient:
     def post(self, path, value):
         req = urllib.request.Request(self.base+path, data=json.dumps(value).encode(), headers={'Content-Type':'application/json','Authorization':'Bearer '+self.token})
         try:
-            with urllib.request.urlopen(req, timeout=20) as response:
+            with urllib.request.urlopen(req, timeout=55 if path=='/agent/skills/model' else 20) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
             if error.code == 401:

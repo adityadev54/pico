@@ -14,6 +14,7 @@ import 'message_frame.dart';
 import 'agent_message.dart';
 import 'place_empty_state.dart';
 import 'task_bubble.dart';
+import 'routine_cards.dart';
 
 class ConversationView extends StatelessWidget {
   const ConversationView({
@@ -32,7 +33,8 @@ class ConversationView extends StatelessWidget {
   final bool typing;
   @override
   Widget build(BuildContext context) =>
-      store.visiblePlaces.isEmpty &&
+      !store.routinesVisible &&
+          store.visiblePlaces.isEmpty &&
           store.visibleTasks.isEmpty &&
           store.error == null
       ? SafeArea(
@@ -94,6 +96,7 @@ class ConversationView extends StatelessWidget {
                       onTap: onDevices,
                     ),
                   const SizedBox(height: 12),
+                  if (store.routinesVisible) RoutineCards(store: store),
                   for (final entry in store.conversation)
                     if (entry.place != null)
                       PlaceMessage(
@@ -107,6 +110,21 @@ class ConversationView extends StatelessWidget {
                         task: entry.task!,
                         store: store,
                       ),
+                  if (store.pendingPlaceId != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: onCompose,
+                          icon: const HeroIcon(
+                            HeroIcons.pencilSquare,
+                            size: 20,
+                          ),
+                          label: const Text('What were you about to do?'),
+                        ),
+                      ),
+                    ),
                   if (store.error != null) AgentMessage(text: store.error!),
                   if (store.places.isNotEmpty &&
                       store.places.every((p) => p.finished) &&
@@ -220,7 +238,7 @@ class _PlaceMessageState extends State<PlaceMessage> {
                   onLongPress: () => menu(anchor),
                   onSecondaryTap: () => menu(anchor),
                   child: Material(
-                    color: colors.surface,
+                    color: colors.primaryContainer,
                     shape: const ChatBubbleShape(mine: true),
                     child: SizedBox(
                       width: double.infinity,

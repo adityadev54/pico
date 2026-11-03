@@ -12,9 +12,10 @@ source = ROOT / 'agents/native/PicoOverlay.swift'
 panels = ROOT / 'agents/native/PicoPanels.swift'
 bubble = ROOT / 'agents/native/PicoReplyBubble.swift'
 apps = ROOT / 'agents/native/PicoAppAccess.swift'
+teaching = ROOT / 'agents/native/PicoTeaching.swift'
 binary.parent.mkdir(parents=True, exist_ok=True)
-if not binary.exists() or max(source.stat().st_mtime, panels.stat().st_mtime, bubble.stat().st_mtime, apps.stat().st_mtime) > binary.stat().st_mtime:
-    subprocess.run(['swiftc', '-target', platform.machine() + '-apple-macos13.0', str(source), str(panels), str(bubble), str(apps), '-o', str(binary)], check=True)
-info = {'CFBundleExecutable': 'PicoOverlay', 'CFBundleIdentifier': 'local.pico.overlay', 'CFBundleName': 'Pico', 'CFBundleDisplayName': 'Pico', 'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.6.0', 'LSUIElement': True, 'NSHighResolutionCapable': True}
+if not binary.exists() or max(source.stat().st_mtime, panels.stat().st_mtime, bubble.stat().st_mtime, apps.stat().st_mtime, teaching.stat().st_mtime) > binary.stat().st_mtime:
+    subprocess.run(['swiftc', '-target', platform.machine() + '-apple-macos13.0', str(source), str(panels), str(bubble), str(apps), str(teaching), '-o', str(binary)], check=True)
+info = {'CFBundleExecutable': 'PicoOverlay', 'CFBundleIdentifier': 'local.pico.teach.overlay', 'CFBundleName': 'Pico Teach', 'CFBundleDisplayName': 'Pico Teach', 'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.6.0', 'LSUIElement': True, 'NSHighResolutionCapable': True}
 (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
 print('Built Pico native character window.')

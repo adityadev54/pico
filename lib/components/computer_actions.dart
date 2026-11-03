@@ -4,6 +4,7 @@ import '../services/command_parser.dart';
 import '../services/pico_store.dart';
 import 'computer_target.dart';
 import 'workflow_review.dart';
+import 'permanent_trash_review.dart';
 
 /// The same bounded actions are available from voice, typing and search.
 Future<bool> dispatchComputerAction(
@@ -77,19 +78,54 @@ Future<bool> dispatchComputerAction(
     );
     return true;
   }
+  if (['convert_file', 'pdf_pages'].contains(command.kind) &&
+      !((helper['document_tools'] as List?) ?? []).contains(command.kind)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'This computer helper does not support document tools yet. Update or reconnect it first.',
+        ),
+      ),
+    );
+    return true;
+  }
+  if ([
+        'delete_files',
+        'restore_deleted',
+        'archive',
+        'empty_trash',
+      ].contains(command.kind) &&
+      !((helper['file_tools'] as List?) ?? []).contains(command.kind)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Update or reconnect this computer helper to use file management.',
+        ),
+      ),
+    );
+    return true;
+  }
   final input = Map<String, dynamic>.from(command.input);
-  if (writeKinds.contains(command.kind) ||
+  final trash = ['delete_files', 'empty_trash'].contains(command.kind);
+  if (trash ||
+      writeKinds.contains(command.kind) ||
       {'read_file', 'list_files'}.contains(command.kind)) {
     final grant = await chooseWorkspace(
       context,
       store,
       device,
       write: writeKinds.contains(command.kind),
+      trash: trash,
     );
     if (grant == null || !context.mounted) return true;
     input['grant_id'] = grant;
   }
-  if (reviewedKinds.contains(command.kind) &&
+  if (command.kind == 'empty_trash' &&
+      (!await confirmPermanentTrash(context) || !context.mounted)) {
+    return true;
+  }
+  if (command.kind != 'empty_trash' &&
+      reviewedKinds.contains(command.kind) &&
       (!await reviewWorkflow(context, command.kind, input) ||
           !context.mounted)) {
     return true;

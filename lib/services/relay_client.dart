@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:http/http.dart' as http;
 
@@ -44,4 +45,16 @@ class RelayException implements Exception {
   final int status;
   @override
   String toString() => message;
+}
+
+/// Keep transport internals and localhost URLs out of conversation copy.
+String relayErrorMessage(Object error) {
+  if (error is RelayException) return error.message;
+  if (error is http.ClientException || error is TimeoutException) {
+    return 'Connection interrupted. Check that Pico Teach is running on your computer, then try again.';
+  }
+  if (error is FormatException) {
+    return 'The connection returned an unreadable reply. Please try again.';
+  }
+  return error.toString().replaceFirst('Exception: ', '');
 }

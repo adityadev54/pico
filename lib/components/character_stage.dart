@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import 'character_ground.dart';
+import 'companion_image.dart';
 
 class CharacterStage extends StatefulWidget {
   const CharacterStage({
@@ -74,12 +75,10 @@ class _CharacterStageState extends State<CharacterStage> {
             const Positioned.fill(child: CharacterGround()),
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Image.asset(
-                'assets/characters/${widget.character}/${widget.mood}.${MediaQuery.disableAnimationsOf(context) ? 'png' : 'gif'}',
-                width: 168,
-                height: 168,
-                gaplessPlayback: true,
-                excludeFromSemantics: true,
+              child: CompanionImage(
+                character: widget.character,
+                mood: widget.mood,
+                size: 168,
               ),
             ),
           ],

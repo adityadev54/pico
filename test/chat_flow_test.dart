@@ -65,69 +65,70 @@ void main() {
       restored.dispose();
     },
   );
-  testWidgets('Review opens a bottom sheet and reuses the selected workspace', (
-    tester,
-  ) async {
-    var approvals = 0;
-    final store = PicoStore(
-      await SharedPreferences.getInstance(),
-      relay: RelayClient(
-        client: MockClient((request) async {
-          if (request.url.path == '/tasks/approve') approvals++;
-          return http.Response('{}', 200);
-        }),
-      ),
-    );
-    store.devices = [
-      {
-        'id': 'mac',
-        'workspaces': [
-          {'id': 'one', 'name': 'Notes', 'access': 'write'},
-          {'id': 'two', 'name': 'Drafts', 'access': 'write'},
-        ],
-      },
-    ];
-    final task = {
-      'id': 'proposal',
-      'device_id': 'mac',
-      'kind': 'create_note',
-      'status': 'awaiting_approval',
-      'input': {
-        'grant_id': 'one',
-        'name': 'checklist.txt',
-        'text': 'Three items',
-      },
-      'result': {
-        'proposal': {'kind': 'create_note'},
-      },
-    };
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: PicoTheme.light,
-        home: Scaffold(
-          body: TaskBubble(task: task, store: store),
+  testWidgets(
+    'Review opens a centered dialog and reuses the selected workspace',
+    (tester) async {
+      var approvals = 0;
+      final store = PicoStore(
+        await SharedPreferences.getInstance(),
+        relay: RelayClient(
+          client: MockClient((request) async {
+            if (request.url.path == '/tasks/approve') approvals++;
+            return http.Response('{}', 200);
+          }),
         ),
-      ),
-    );
-    await tester.tap(find.text('Review action'));
-    await tester.pumpAndSettle();
-    expect(find.text('Review this action'), findsOneWidget);
-    expect(find.text('Choose a folder'), findsNothing);
-    expect(find.byType(PicoDialog), findsOneWidget);
-    expect(
-      tester.getBottomRight(find.byType(PicoDialog)).dy,
-      closeTo(
-        tester.view.physicalSize.height / tester.view.devicePixelRatio - 12,
-        2,
-      ),
-    );
-    await tester.tap(find.text('Approve'));
-    await tester.pumpAndSettle();
-    expect(approvals, 1);
-    expect(find.byType(PicoDialog), findsNothing);
-    await tester.pumpWidget(const SizedBox());
-    store.dispose();
-  });
+      );
+      store.devices = [
+        {
+          'id': 'mac',
+          'workspaces': [
+            {'id': 'one', 'name': 'Notes', 'access': 'write'},
+            {'id': 'two', 'name': 'Drafts', 'access': 'write'},
+          ],
+        },
+      ];
+      final task = {
+        'id': 'proposal',
+        'device_id': 'mac',
+        'kind': 'create_note',
+        'status': 'awaiting_approval',
+        'input': {
+          'grant_id': 'one',
+          'name': 'checklist.txt',
+          'text': 'Three items',
+        },
+        'result': {
+          'proposal': {'kind': 'create_note'},
+        },
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: PicoTheme.light,
+          home: Scaffold(
+            body: TaskBubble(task: task, store: store),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Review action'));
+      await tester.pumpAndSettle();
+      expect(find.text('Create file?'), findsOneWidget);
+      expect(find.text('Choose a folder'), findsNothing);
+      expect(find.byType(PicoDialog), findsOneWidget);
+      expect(
+        tester.getCenter(find.byType(PicoDialog)).dy,
+        closeTo(
+          tester.view.physicalSize.height / tester.view.devicePixelRatio / 2,
+          2,
+        ),
+      );
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(approvals, 1);
+      expect(find.byType(PicoDialog), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      store.dispose();
+    },
+  );
   for (final sample in [
     (390.0, 844.0, false),
     (390.0, 844.0, true),

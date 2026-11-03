@@ -23,6 +23,7 @@ android {
 
     defaultConfig {
         applicationId = "com.pico.app"
+        manifestPlaceholders["picoAppLabel"] = "Pico"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -44,6 +45,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            applicationIdSuffix = ".teach"
+            versionNameSuffix = "-teach"
+            manifestPlaceholders["picoAppLabel"] = "Pico Teach"
+        }
         release { signingConfig = signingConfigs.getByName("release") }
     }
 }

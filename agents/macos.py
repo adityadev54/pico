@@ -15,6 +15,10 @@ def context(snapshot=None, excluded_apps=None):
     result = subprocess.run(args,capture_output=True,text=True,timeout=10,check=True)
     return json.loads(result.stdout)
 
+def request_screen_access():
+    binary=resource_root()/'native/macos_context' if getattr(sys,'frozen',False) else Path(__file__).parent/'native/macos_context'
+    subprocess.run([str(binary),'request-screen-access'],capture_output=True,timeout=15)
+
 def configure_background_app():
     """Keep the hidden Tk worker out of the Dock after Tk initializes AppKit."""
     import ctypes
@@ -63,10 +67,10 @@ def start_overlay(events):
                 try:
                     value = json.loads(action)
                     if value.get('action') == 'pair':events.put(('native_pair',value.get('code','')))
-                    elif value.get('action') in ('preferences','place_action','open_place','clear_snapshots','pause','unpair','open_app','permissions','task_approval'):events.put(('native_panel',value))
+                    elif value.get('action') in ('preferences','place_action','open_place','clear_snapshots','pause','unpair','open_app','permissions','task_approval','teach','show_teach','show_places','refresh_screen_access','request_screen_access','folder_grant'):events.put(('native_panel',value))
                 except (ValueError, TypeError):pass
                 continue
-            if action in ('permissions', 'applications', 'parked', 'unpair', 'quit'):
+            if action in ('permissions', 'applications', 'parked', 'teach', 'unpair', 'quit'):
                 events.put(('overlay_action', action))
     threading.Thread(target=actions, daemon=True).start()
     return process

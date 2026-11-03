@@ -13,7 +13,7 @@ def authorize(request, task, cfg):
     if os.environ.get('PICO_MODEL_ENABLED')!='1':raise BudgetDenied('AI planning is off.')
     if request.full_url!=ENDPOINT:raise BudgetDenied('Use the approved Muse endpoint.')
     body=json.loads(request.data)
-    if body.get('model')!=MODEL or body.get('max_completion_tokens')!=400 or body.get('reasoning_effort')!='minimal':raise BudgetDenied('Model request exceeds the test settings.')
+    if body.get('model')!=MODEL or body.get('max_completion_tokens')!=(1000 if task.get('kind')=='taught_routine' else 400) or body.get('reasoning_effort')!='minimal':raise BudgetDenied('Model request exceeds the test settings.')
     if len(request.data)>16000:raise BudgetDenied('Request too large for the AI test budget.')
     path=os.environ.get('PICO_MODEL_LEDGER','')
     if not path or not Path(path).is_absolute():raise BudgetDenied('A persistent model budget ledger is required.')

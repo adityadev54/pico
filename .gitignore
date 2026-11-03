@@ -115,3 +115,10 @@ downloads/
 **/CLAUDE.md
 **/GEMINI.md
 **/.DS_Store
+
+# Private development sessions and generated validation reports
+.venv-runtime/
+/Start Pico Teach.command
+/Install Android Test.command
+/validation/
+*.spec

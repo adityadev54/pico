@@ -6,6 +6,11 @@ from pathlib import Path
 
 class BudgetDenied(Exception): pass
 
+def limit(name, default):
+    # Owner-set ceilings. Defaults stay the original $1/day, $5 total, 2/minute.
+    try:return max(0.0,float(os.environ.get(name,default)))
+    except ValueError:return float(default)
+
 class ModelBudget:
     # Each bounded text-only request reserves $0.10, including failed calls.
     # These reservations are deliberately higher than expected token charges.
@@ -25,7 +30,9 @@ class ModelBudget:
             total=db.execute('select coalesce(sum(reserved),0) from model_calls').fetchone()[0]
             daily=db.execute('select coalesce(sum(reserved),0) from model_calls where at>=?',(day,)).fetchone()[0]
             recent=db.execute('select count(*) from model_calls where at>?',(now-60,)).fetchone()[0]
-            # Global $5 lifetime / $1 UTC-day ceiling across both enabled owner accounts.
-            if total+self.RESERVATION>5000000 or daily+self.RESERVATION>1000000:raise BudgetDenied('Pico’s AI test budget is reached. Basic commands still work.')
-            if recent>=2:raise BudgetDenied('Wait a minute before another AI request.')
+            # Global lifetime / UTC-day ceiling across both enabled owner accounts.
+            lifetime=int(limit('PICO_MODEL_TOTAL_USD',5)*1000000);per_day=int(limit('PICO_MODEL_DAILY_USD',1)*1000000)
+            if total+self.RESERVATION>lifetime:raise BudgetDenied('Pico’s AI test budget is reached: the overall allowance is used up. Basic commands still work.')
+            if daily+self.RESERVATION>per_day:raise BudgetDenied('Pico’s AI test budget is reached for today. It resets at 00:00 UTC. Basic commands still work.')
+            if recent>=limit('PICO_MODEL_PER_MINUTE',2):raise BudgetDenied('Wait a minute before another AI request.')
             db.execute('insert into model_calls values (?,?,?,?)',(request_id,owner,now,self.RESERVATION))

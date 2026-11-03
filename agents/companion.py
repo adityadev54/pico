@@ -15,6 +15,7 @@ from tkinter import messagebox
 from PIL import Image, ImageTk, ImageSequence
 from client import DeviceClient,DeviceError
 from head_start import prepare
+from skills.controller import SkillsController
 from app_access import approved_apps, catalog, open_selected
 
 from paths import resource_root
@@ -38,7 +39,9 @@ class Companion:
             self.save()  # Old free-text exclusions need review in the new app picker.
         self.state['allowed_apps']=approved_apps(self.state.get('allowed_apps', []))
         self.state.setdefault('grants',[])
-        self.running_tasks={};self.cancelled_tasks=set();self.approvals={}
+        from grant_sync import GrantFile
+        self.grant_file=GrantFile(self.state_file)
+        self.running_tasks={};self.cancelled_tasks=set();self.approvals={};self.grant_requests={}
         self.recover_tasks()
         self.root=tk.Tk();self.root.withdraw();self.root.title('Pico')
         if hasattr(platform, 'configure_background_app'):platform.configure_background_app()
@@ -46,12 +49,14 @@ class Companion:
         self.client=DeviceClient.load(self.config) if self.config.exists() else None
         if self.client:self.bind_device(self.client)
         self.overlay = platform.start_overlay(self.events) if hasattr(platform, 'start_overlay') else None
+        self.skills=SkillsController(self)
         self.background=platform.configure_window(self.root)
         self.root.overrideredirect(True);self.root.attributes('-topmost',True)
         self.label=tk.Label(self.root,bg=self.background,borderwidth=0,highlightthickness=0);self.label.pack()
         self.root.bind('<ButtonPress-1>',self.drag_start);self.root.bind('<B1-Motion>',self.drag)
         self.menu=tk.Menu(self.root,tearoff=0)
         self.menu.add_command(label='Pico permissions',command=self.permissions)
+        self.menu.add_command(label='Teach a routine…',command=self.skills.show)
         self.menu.add_command(label='Parked Places',command=self.show_parked)
         self.menu.add_command(label='Unpair',command=self.unpair)
         self.menu.add_command(label='Quit Pico',command=self.quit)
@@ -65,9 +70,17 @@ class Companion:
         else:self.root.after(200,self.pairing)
         self.root.mainloop()
 
+    def refresh_grants(self):
+        with self.lock:
+            if hasattr(self,'grant_file'):
+                self.state['grants']=self.grant_file.reconcile(self.state.get('grants',[]))
+            return list(self.state.get('grants',[]))
+
     def save(self):
         with self.lock:
+            self.refresh_grants()
             temporary=self.state_file.with_suffix('.tmp');temporary.write_text(json.dumps(self.state));os.chmod(temporary,0o600);temporary.replace(self.state_file)
+            if hasattr(self,'grant_file'):self.grant_file.saved(self.state.get('grants',[]))
 
     def load_character(self):
         if self.overlay:
@@ -75,8 +88,9 @@ class Companion:
             self.overlay.stdin.flush()
             return
         size={'small':138,'medium':184,'large':224}.get(self.state['size'],184)
-        file=ROOT/'assets/characters'/self.state['character']/(self.mood+'.gif')
+        asset={'angry':'stuck','curious':'thinking','happy':'done','sleepy':'idle','surprised':'needsYou'}.get(self.mood,self.mood)
         frames=[]
+        file=ROOT/'assets/characters'/self.state['character']/(asset+'.gif')
         with Image.open(file) as image:
             for frame in ImageSequence.Iterator(image):
                 frames.append(ImageTk.PhotoImage(frame.convert('RGBA').resize((size,size),Image.Resampling.LANCZOS)))
@@ -129,11 +143,24 @@ class Companion:
 
     def start_worker(self):
         threading.Thread(target=self.poll,daemon=True).start()
+        if not getattr(self,'context_worker',None) or not self.context_worker.is_alive():
+            self.context_worker=threading.Thread(target=self.watch_context,daemon=True)
+            self.context_worker.start()
 
-    def poll(self):
+    def watch_context(self):
         away=False
         while not self.stopped.is_set() and self.client:
             try:
+                away=self.observe_step_away(away)
+                self.purge_snapshots()
+            except Exception:
+                pass
+            self.stopped.wait(1)
+
+    def poll(self):
+        while not self.stopped.is_set() and self.client:
+            try:
+                self.refresh_grants()
                 client=self.client
                 result=client.post('/agent/poll',{'capabilities':__import__('task_execution').capabilities(self.state)})
                 for message in result['mail']:self.events.put(('mail',message))
@@ -146,18 +173,24 @@ class Companion:
                     self.deliver_message(client,message)
                     with self.lock:self.state['outgoing']=[m for m in self.state['outgoing'] if m['id']!=message['id']]
                     self.save()
-                info=self.platform.context()
-                if self.state['notice_idle'] and time.time()>self.state['paused_until']:
-                    idle=info.get('idle',0)>=self.state['idle_minutes']*60
-                    if idle and not away:self.hold_context(info)
-                    if away and not idle:self.events.put(('return',None))
-                    away=idle
-                self.purge_snapshots()
+                if self.skills.session:
+                    try:self.skills.engine().observe(self.skills.session)
+                    except ValueError:pass
+
             except PermissionError:
                 self.events.put(('revoked',None));return
             except Exception:
                 pass  # Local Places remain available through a network outage.
             self.stopped.wait(1)
+
+    def observe_step_away(self,away):
+        if not self.state['notice_idle'] or time.time()<=self.state['paused_until']:
+            return False
+        info=self.platform.context()
+        idle=info.get('idle',0)>=self.state['idle_minutes']*60
+        if idle and not away:self.hold_context(info)
+        if away and not idle:self.events.put(('return',None))
+        return idle
 
     def deliver_message(self,client,message):
         try:client.post('/agent/mail',message)
@@ -183,6 +216,7 @@ class Companion:
         self.save()
 
     def consume(self, message):
+        if message['kind']=='skill_request':self.skills.receive(message);return
         if message['kind']=='tool_call':
             self.consume_task(message);return
         if message['kind']=='cancel':
@@ -269,9 +303,29 @@ class Companion:
     def approve_task(self,review):
         identity=str(uuid.uuid4());event=threading.Event();answer={'event':event,'allowed':False}
         self.approvals[identity]=answer
+        self.events.put(('presentation',('needsYou','','',60)))
         self.events.put(('task_approval',{'id':identity,**review}))
         event.wait(45);self.approvals.pop(identity,None)
+        if answer['allowed']:self.events.put(('presentation',('working','','',60)))
         return answer['allowed']
+
+    def request_folder_grant(self, access):
+        if not hasattr(self,'grant_requests'):return None
+        identity=str(uuid.uuid4());event=threading.Event();client=self.client
+        answer={'event':event,'path':None,'access':access}
+        self.grant_requests[identity]=answer
+        self.events.put(('folder_grant_request',{'id':identity,'access':access}))
+        event.wait(45);self.grant_requests.pop(identity,None)
+        path=answer['path']
+        if not path or self.client is not client:return None
+        from grants import record
+        try:entry=record(path,access,'native-folder-request')
+        except (OSError,SystemExit):return None
+        with self.lock:
+            self.refresh_grants()
+            self.state['grants']=[g for g in self.state['grants'] if g['path']!=entry['path']]+[entry]
+            self.save()
+        return entry
 
     def execute_safe_task(self, payload):
         from task_execution import execute
@@ -282,8 +336,9 @@ class Companion:
         def register(fn):
             self.running_tasks[task]=fn
             if cancelled():fn()
-        result=execute(payload,self.state,self.platform,lambda:self.events.put(('show_permissions',None)),client=self.client,approve=self.approve_task,cancelled=cancelled,register_cancel=register,unregister_cancel=lambda:self.running_tasks.pop(task,None))
-        self.events.put(('presentation',('done' if result['status']=='succeeded' else 'stuck',result.get('message','Request finished.'),None)))
+        self.events.put(('presentation',('working','','',60)))
+        result=execute(payload,self.state,self.platform,lambda:self.events.put(('show_permissions',None)),client=self.client,approve=self.approve_task,cancelled=cancelled,register_cancel=register,unregister_cancel=lambda:self.running_tasks.pop(task,None),refresh_grants=self.refresh_grants,request_grant=self.request_folder_grant)
+        self.events.put(('presentation',('happy' if result['status']=='succeeded' else 'angry',result.get('message','Request finished.'),'',4)))
         return result
 
     def queue_app_catalog(self):
@@ -298,7 +353,7 @@ class Companion:
             with self.lock:
                 self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'app_result','payload':{'app_id':identity,'request_id':request_id,'result':'opened' if success else 'failed','message':message}})
             self.save()
-        self.events.put(('presentation',('done' if success else 'stuck',message,'')))
+        self.events.put(('presentation',('happy' if success else 'angry',message,'',4)))
 
     def reopen_approved(self, bundle):
         app=next((a for a in self.state['allowed_apps'] if a['bundle']==bundle),None)
@@ -323,7 +378,9 @@ class Companion:
 
     def show_card(self, id, details=False):
         place=self.state['places'][id]
-        if not place.get('sentence') or place.get('status')=='finished':return
+        if place.get('status')=='finished':return
+        if not place.get('sentence'):
+            self.events.put(('notice','Waiting for your next step on the phone.'));return
         if self.overlay:
             self.native_card_id=id
             if not details:
@@ -349,20 +406,20 @@ class Companion:
         tk.Button(actions,text='Park it',command=park,padx=12,pady=12).grid(row=0,column=1,sticky='ew',padx=(6,0))
 
     def show_parked(self):
-        for id,place in reversed(list(self.state['places'].items())):
-            if place.get('status')=='parked':self.show_card(id);return
-        if self.overlay:self.overlay_message({'command':'notice','payload':json.dumps({'message':'No parked Places.'})})
+        rows=[{'id':id,'sentence':p.get('sentence') or 'Waiting for your next step','status':p['status'],'app':p.get('app','')} for id,p in reversed(list(self.state['places'].items())) if p.get('status') in ('waiting','ready','parked')]
+        if self.overlay:self.overlay_message({'command':'places','payload':json.dumps({'places':rows})})
+        elif rows:self.show_card(rows[0]['id'],details=True)
         else:messagebox.showinfo('Pico','No parked Places.',parent=self.root)
 
     def permissions(self):
         if self.overlay:
-            self.overlay_message({'command':'permissions','payload':json.dumps({key:self.state[key] for key in ['notice_idle','idle_minutes','snapshots','prepare','share_snapshot','reopen','excluded_apps','retention_days','allowed_apps','grants']} | {'model_configured':bool(os.environ.get('MUSE_API_URL') and os.environ.get('MUSE_API_KEY')),'paired':self.client is not None})});return
+            self.overlay_message({'command':'permissions','payload':json.dumps({key:self.state[key] for key in ['notice_idle','idle_minutes','snapshots','prepare','share_snapshot','reopen','excluded_apps','retention_days','allowed_apps','grants']} | {'screen_access':bool(self.platform.context().get('screen_access')),'model_configured':False,'paired':self.client is not None})});return
         window=tk.Toplevel(self.root);window.title('Pico permissions');window.configure(bg='#F5F1EE')
         frame=tk.Frame(window,bg='#F5F1EE',padx=12,pady=12);frame.pack(fill='both',expand=True)
         tk.Label(frame,text='Hold my place',font=('Helvetica',18),bg='#F5F1EE').pack(anchor='w',pady=12)
         minutes=tk.IntVar(value=self.state['idle_minutes'])
         for value in (1,2,5):tk.Radiobutton(frame,text=f'After {value} minutes',variable=minutes,value=value,bg='#F5F1EE').pack(anchor='w')
-        snapshots=tk.TuckleanVar(value=self.state['snapshots'])
+        snapshots=tk.BooleanVar(value=self.state['snapshots'])
         tk.Checkbutton(frame,text='Snapshot the active window (requires screen access)',variable=snapshots,bg='#F5F1EE').pack(anchor='w',pady=12)
         tk.Label(frame,text='Never snapshot apps containing these names (one per line)',bg='#F5F1EE').pack(anchor='w',pady=12)
         excluded=tk.Text(frame,width=42,height=5);excluded.insert('1.0','\n'.join([app['name'] for app in self.state['excluded_apps']]));excluded.pack(fill='x')
@@ -375,6 +432,19 @@ class Companion:
 
     def native_panel(self, value):
         action=value.get('action')
+        if action=='teach':self.skills.action(value);return
+        if action=='show_teach':self.skills.show();return
+        if action=='show_places':self.show_parked();return
+        if action=='refresh_screen_access':self.permissions();return
+        if action=='request_screen_access':
+            threading.Thread(target=lambda:(self.platform.request_screen_access(),self.events.put(('show_permissions',None))),daemon=True).start();return
+        if action=='folder_grant':
+            answer=self.grant_requests.get(value.get('id'))
+            if answer:
+                path=value.get('path')
+                answer['path']=path if isinstance(path,str) and path and Path(path).is_dir() else None
+                answer['event'].set()
+            return
         if action=='task_approval':
             answer=self.approvals.get(value.get('id'))
             if answer:
@@ -388,7 +458,7 @@ class Companion:
             apps=settings.get('excluded_apps',[])
             if isinstance(apps,list):self.state['excluded_apps']=[{'name':str(app['name'])[:120],'bundle':str(app['bundle'])[:200]} for app in apps[:100] if isinstance(app,dict) and app.get('name') and app.get('bundle')]
             self.state['allowed_apps']=approved_apps(settings.get('allowed_apps',self.state['allowed_apps']))
-            self.state['grants']=[{'path':str(Path(g['path']).resolve()),'access':'write' if g.get('access')=='write' else 'read'} for g in settings.get('grants',self.state['grants']) if isinstance(g,dict) and isinstance(g.get('path'),str) and g['path'] and Path(g['path']).is_dir()][:20]
+            self.state['grants']=[{'path':str(Path(g['path']).resolve()),'access':g.get('access') if g.get('access') in ('read','write','delete') else 'read'} for g in settings.get('grants',self.state['grants']) if isinstance(g,dict) and isinstance(g.get('path'),str) and g['path'] and Path(g['path']).is_dir()][:20]
             self.save();self.queue_app_catalog()
         elif action=='permissions':self.permissions()
         elif action=='open_app':
@@ -439,8 +509,9 @@ class Companion:
             while True:
                 kind,value=self.events.get_nowait()
                 if kind=='overlay_action':
-                    {'permissions':self.permissions,'applications':self.applications,'parked':self.show_parked,'unpair':self.unpair,'quit':self.quit}[value]()
+                    {'permissions':self.permissions,'applications':self.applications,'parked':self.show_parked,'teach':self.skills.show,'unpair':self.unpair,'quit':self.quit}[value]()
                     if value=='quit':return
+                elif kind=='skills_show':self.skills.show(value)
                 elif kind=='native_panel':self.native_panel(value)
                 elif kind=='native_pair':self.native_pair(value)
                 elif kind=='native_paired':
@@ -453,6 +524,12 @@ class Companion:
                 elif kind=='mail':
                     if value.get('kind')=='tool_call':threading.Thread(target=self.consume,args=(value,),daemon=True).start()
                     else:self.consume(value)
+                elif kind=='folder_grant_request':
+                    if self.overlay:self.overlay_message({'command':'folder_grant','payload':json.dumps(value)})
+                    else:
+                        from tkinter import filedialog
+                        selected=filedialog.askdirectory(title='Choose a folder for '+value['access']+' access')
+                        self.native_panel({'action':'folder_grant','id':value['id'],'path':selected})
                 elif kind=='task_approval':
                     if self.overlay:self.overlay_message({'command':'approval','payload':json.dumps(value)})
                     else:
@@ -492,10 +569,15 @@ class Companion:
 
 def bundled_relay():
     config=ROOT/'config/companion.json'
-    return json.loads(config.read_text())['relay'] if config.exists() else 'http://127.0.0.1:8765'
+    return json.loads(config.read_text())['relay'] if config.exists() else 'https://pico-companion.fly.dev'
+
+def state_directory():
+    if getattr(__import__('sys'),'frozen',False):
+        return Path.home()/'Library/Application Support/Pico' if __import__('sys').platform=='darwin' else Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'Pico'
+    return ROOT/'.local/teach-companion'
 
 def run(platform):
     parser=argparse.ArgumentParser(description='Pico character companion')
     parser.add_argument('--relay',default=os.environ.get('PICO_RELAY_URL', bundled_relay()))
-    parser.add_argument('--state',default=str(Path.home()/'.pico'))
+    parser.add_argument('--state',default=os.environ.get('PICO_STATE_DIRECTORY',str(state_directory())))
     args=parser.parse_args();Companion(platform,args.relay,args.state)

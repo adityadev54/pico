@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:heroicons/heroicons.dart';
 
 import 'character_ground.dart';
+import 'companion_image.dart';
 import 'floating_surface.dart';
 
 class PlaceEmptyState extends StatelessWidget {
@@ -40,12 +41,10 @@ class PlaceEmptyState extends StatelessWidget {
                       Positioned.fill(child: CharacterGround()),
                       GestureDetector(
                         onDoubleTap: onVoice,
-                        child: Image.asset(
-                          'assets/characters/$character/$mood.${MediaQuery.disableAnimationsOf(context) ? 'png' : 'gif'}',
-                          width: (compact ? 100 : 162) * scale,
-                          height: (compact ? 100 : 162) * scale,
-                          gaplessPlayback: true,
-                          semanticLabel: 'Your Pico companion, $character',
+                        child: CompanionImage(
+                          character: character,
+                          mood: mood,
+                          size: (compact ? 100 : 162) * scale,
                         ),
                       ),
                     ],

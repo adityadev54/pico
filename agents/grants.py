@@ -2,13 +2,13 @@
 
 Grants live in the companion state file (`~/.pico/places.json`, key
 "grants") as records {id, path, access, granted_at, source}. Access is
-read or write; write implies read. Legacy {path}-only entries are
+read, write or delete; higher levels imply the lower levels. Legacy {path}-only entries are
 treated as read-only. Enforcement happens in native_search (root
 selection by level) and handlers (per-tool level); this module owns
 request/grant/revoke bookkeeping plus a small CLI:
 
   python3 agents/grants.py list [--state PATH]
-  python3 agents/grants.py grant ~/Documents [--access read|write] [--state PATH]
+  python3 agents/grants.py grant ~/Documents [--access read|write|delete] [--state PATH]
   python3 agents/grants.py revoke <id-or-path> [--state PATH]
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-LEVELS = ('read', 'write')
+LEVELS = ('read', 'write', 'delete')
 DEFAULT_STATE = Path.home() / '.pico' / 'places.json'
 
 
@@ -62,7 +62,7 @@ def list_grants(state_path=DEFAULT_STATE):
 
 def grant(path, access='read', source='cli', state_path=DEFAULT_STATE):
     if access not in LEVELS:
-        raise SystemExit('error: access must be read or write')
+        raise SystemExit('error: access must be read, write or delete')
     resolved = Path(path).expanduser().resolve()
     if not resolved.is_dir():
         raise SystemExit(f'error: {path} is not a directory')

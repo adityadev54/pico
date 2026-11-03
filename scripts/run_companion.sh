@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-PICO_PYTHON="${PICO_PYTHON:-python3}"
+PICO_PYTHON="${PICO_PYTHON:-.venv-runtime/bin/python}"
 case "$(uname -s)" in
   Darwin)
     if [ ! -x agents/native/macos_context ] || [ agents/native/macos_context.swift -nt agents/native/macos_context ]; then

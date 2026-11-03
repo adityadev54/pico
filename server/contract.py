@@ -52,6 +52,8 @@ ERROR_CODES = (
 # Initial tools plus the documented next set. Legacy phone kinds map to
 # these: find_document -> search_documents, send_file -> transfer_selected_file.
 SUPPORTED_TOOLS = (
+    "delete_files", "restore_deleted", "archive", "empty_trash",
+    "convert_file", "pdf_pages",
     "search_documents",
     "transfer_selected_file",
     "capture_current_tab",
@@ -120,7 +122,23 @@ def validate_tool_call(message: dict) -> dict:
 
 
 def _validate_tool_args(tool: str, args: dict) -> None:
-    if tool == "search_documents":
+    if tool in ("delete_files","empty_trash"):
+        if args.get('confirm') != ('DELETE' if tool=='delete_files' else 'EMPTY'):
+            raise ContractError('invalid_message','Explicit confirmation is required.')
+        if tool=='delete_files':_require_str(args.get('path'),'path',512)
+    elif tool=='restore_deleted':_require_str(args.get('name'),'name',512)
+    elif tool=='archive':
+        if args.get('action') not in ('create','extract'):raise ContractError('invalid_message','Invalid ZIP action.')
+        _require_str(args.get('paths_json'),'paths_json',2000)
+    elif tool == "convert_file":
+        _require_str(args.get("path"), "path", 512)
+        if args.get("to") not in ("pdf","docx","txt","png","jpg","jpeg","webp"):
+            raise ContractError("invalid_message", "Unsupported conversion format.")
+    elif tool == "pdf_pages":
+        if args.get("action") not in ("merge","split","rotate","watermark"):
+            raise ContractError("invalid_message", "Unsupported PDF action.")
+        _require_str(args.get("paths_json"), "paths_json", 2000)
+    elif tool == "search_documents":
         _require_str(args.get("query"), "query", 500)
         if "grant_id" in args:
             _require_str(args.get("grant_id"), "grant_id", 128)

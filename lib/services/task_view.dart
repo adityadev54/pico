@@ -5,6 +5,12 @@ Map<String, dynamic> picoTaskView(Map<String, dynamic> row) {
       input is Map &&
       input['_pico_kind'] is String) {
     const kinds = {
+      'delete_files',
+      'restore_deleted',
+      'archive',
+      'empty_trash',
+      'convert_file',
+      'pdf_pages',
       'find_document',
       'send_file',
       'open_website',

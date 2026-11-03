@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../services/pico_store.dart';
 import 'pico_dialog.dart';
-import 'pico_sheet.dart';
 
 const reviewedKinds = {
+  'delete_files',
+  'restore_deleted',
+  'archive',
+  'empty_trash',
+  'convert_file',
+  'pdf_pages',
   'create_note',
   'edit_file',
   'receive_upload',
@@ -16,6 +21,10 @@ const reviewedKinds = {
   'open_document',
 };
 const writeKinds = {
+  'restore_deleted',
+  'archive',
+  'convert_file',
+  'pdf_pages',
   'create_note',
   'edit_file',
   'receive_upload',
@@ -25,6 +34,14 @@ const writeKinds = {
 
 Map<String, dynamic> _reviewDetails(Map<String, dynamic> input) {
   const labels = {
+    'confirm': 'Required confirmation',
+    'to': 'Convert to',
+    'action': 'Action',
+    'paths': 'Source files',
+    'pages': 'Pages',
+    'angle': 'Degrees',
+    'watermark': 'Watermark text',
+    'output': 'Output name',
     'name': 'File',
     'path': 'File',
     'text': 'Contents',
@@ -48,18 +65,31 @@ Future<bool> reviewWorkflow(
   String kind,
   Map<String, dynamic> input,
 ) async =>
-    await showPicoSheet<bool>(
+    await showPicoDialog<bool>(
       context: context,
       builder: (context) => PicoDialog(
-        title: const Text('Review this action'),
+        title: Text(switch (kind) {
+          'open_website' => 'Open website?',
+          'open_document' => 'Open file?',
+          'create_note' => 'Create file?',
+          'edit_file' => 'Save changes?',
+          'archive' =>
+            input['action'] == 'extract' ? 'Extract ZIP?' : 'Create ZIP?',
+          'delete_files' => 'Move to Pico trash?',
+          'restore_deleted' => 'Restore file?',
+          'convert_file' => 'Convert file?',
+          'pdf_pages' => 'Save PDF copy?',
+          'receive_upload' => 'Save photo?',
+          'run_command' => 'Run command?',
+          'organize_photos' => 'Organize photos?',
+          _ => 'Review action',
+        }),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 280),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(kind.replaceAll('_', ' ')),
-                const SizedBox(height: 12),
                 for (final detail in _reviewDetails(input).entries)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -79,10 +109,6 @@ Future<bool> reviewWorkflow(
                       ],
                     ),
                   ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Approved file actions run in your selected workspace. Commands still need approval on your computer.',
-                ),
               ],
             ),
           ),
@@ -107,17 +133,24 @@ Future<String?> chooseWorkspace(
   PicoStore store,
   String device, {
   bool write = false,
+  bool trash = false,
 }) async {
   final row = store.devices.where((d) => d['id'] == device).firstOrNull;
   final workspaces = (row?['workspaces'] as List? ?? [])
       .whereType<Map>()
-      .where((g) => !write || g['access'] == 'write')
+      .where(
+        (g) =>
+            (!write || ['write', 'delete'].contains(g['access'])) &&
+            (!trash || g['access'] == 'delete'),
+      )
       .toList();
   if (workspaces.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          write
+          trash
+              ? 'Allow reviewed trash access for this folder in Mac Permissions first.'
+              : write
               ? 'Choose a write workspace in Pico’s computer permissions first.'
               : 'Choose an approved folder on your computer first.',
         ),

@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 // Use a native character-only window; never composite GIFs into Tk.
 final class CharacterView: NSImageView {
@@ -47,7 +48,7 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         content.addSubview(reply)
         window.contentView = content
         let menu = NSMenu()
-        for (title, action) in [("Open apps…", "applications"), ("Permissions…", "permissions"), ("Parked Places", "parked"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
+        for (title, action) in [("Open apps…", "applications"), ("Permissions…", "permissions"), ("Parked Places", "parked"), ("Teach a routine…", "teach"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
             let item = NSMenuItem(title: title, action: #selector(selectAction(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = action; menu.addItem(item)
         }
@@ -67,8 +68,11 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
             if let data = try? JSONSerialization.data(withJSONObject: proof), let text = String(data: data, encoding: .utf8) { print(text); fflush(stdout) }
         }
     }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if panels.permissions?.isVisible == true { emit(["action":"refresh_screen_access"]) }
+    }
     func update(_ value: [String: String]) {
-        if let command = value["command"], ["permissions","applications","welcome","notice","approval"].contains(command) { panels.handle(command,payload:value["payload"] ?? "{}");return }
+        if let command = value["command"], ["permissions","applications","welcome","notice","approval","places","teach","folder_grant"].contains(command) { panels.handle(command,payload:value["payload"] ?? "{}");return }
         if value["command"] == "pairing" { showPairing(); return }
         if value["command"] == "pair_status" {
             message.stringValue = value["message"] ?? ""
@@ -93,10 +97,12 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         guard ["tuck", "mica"].contains(selected), ["small", "medium", "large"].contains(scale) else { return }
         let activity = value["mood"] ?? mood
         if activity == "idle" && replyPlace.isEmpty { reply.isHidden = true; replyText = "" }
-        guard ["idle","listening","talking","working","thinking","done","stuck","needsYou"].contains(activity) else { return }
+        guard ["idle","listening","talking","working","thinking","done","stuck","needsYou","angry","curious","happy","sleepy","surprised"].contains(activity) else { return }
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let url = assets.appendingPathComponent(selected).appendingPathComponent(activity + (reduced ? ".png" : ".gif"))
-        guard let picture = NSImage(contentsOf: url) else { return }
+        let activityAsset = ["angry":"stuck", "curious":"thinking", "happy":"done", "sleepy":"idle", "surprised":"needsYou"][activity] ?? activity
+        let url = assets.appendingPathComponent(selected).appendingPathComponent(activityAsset + (reduced ? ".png" : ".gif"))
+        guard let picture = NSImage(contentsOf:url) else{return}
+        let reactionChanged = character != selected || mood != activity
         character = selected; size = scale; mood = activity
         let side: CGFloat = scale == "small" ? 138 : scale == "large" ? 224 : 180
         let width = max(side + 20, 280)
@@ -107,6 +113,24 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         image.setAccessibilityLabel("Pico companion, \(selected), \(activity)")
         image.animates = !reduced
         image.wantsLayer = true
+        if reactionChanged || reduced {
+            image.layer?.removeAnimation(forKey:"moodReaction")
+            if !reduced {
+                let reaction: (String,[Double],Double)? = [
+                    "angry":("transform.translation.x",[-2,2,-2,2,0],0.4),
+                    "curious":("transform.rotation.z",[0,-0.025,0],1.8),
+                    "happy":("transform.translation.y",[0,4,0],0.7),
+                    "sleepy":("transform.rotation.z",[-0.012,0.012,-0.012],3.0),
+                    "surprised":("transform.scale",[1,1.06,1],0.6)
+                ][activity]
+                if let (key,values,duration) = reaction {
+                    let animation = CAKeyframeAnimation(keyPath:key)
+                    animation.values = values;animation.duration = duration
+                    animation.repeatCount = activity == "surprised" ? 1 : .infinity
+                    image.layer?.add(animation,forKey:"moodReaction")
+                }
+            }
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.18
             context.allowsImplicitAnimation = true

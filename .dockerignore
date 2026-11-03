@@ -34,3 +34,14 @@ server/*
 !server/verification/**
 **/__pycache__
 **/.env*
+
+!server/skills/
+!server/skills/**
+!agents/
+agents/**
+!agents/skills/
+agents/skills/**
+!agents/skills/__init__.py
+!agents/skills/contracts.py
+
+!downloads/release.json

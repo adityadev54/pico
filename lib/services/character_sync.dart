@@ -36,3 +36,15 @@ class CharacterSync {
     }
   }
 }
+
+/// Live poses renew their lease without replaying completed-task reactions.
+bool shouldRefreshCompanionMood(String mood, DateTime? sent, DateTime now) =>
+    const {
+      'working',
+      'thinking',
+      'needsYou',
+      'sleepy',
+      'curious',
+    }.contains(mood) &&
+    sent != null &&
+    now.difference(sent) >= const Duration(seconds: 20);

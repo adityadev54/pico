@@ -114,3 +114,23 @@ def check_open_document(data: dict) -> dict:
     if not data.get("candidate_id"):
         raise ContractError("invalid_message", "Open manifest lacks identity.")
     return {"ok": True, "name": data["name"]}
+
+
+def check_document_result(data, evidence):
+    """A local conversion completes only with a bounded, scoped saved manifest."""
+    import re
+    from pathlib import PurePosixPath
+    check_fs_manifest(data, 'fs_write')
+    path = data.get('path')
+    if not isinstance(path,str) or not path or '\\' in path or PurePosixPath(path).is_absolute() or any(p.startswith('.') for p in path.split('/')):
+        raise ContractError('invalid_message','Invalid document output path.')
+    size = data.get('size_bytes')
+    if type(size) is not int or not 0 < size <= 1024*1024:
+        raise ContractError('invalid_message','Document output size is invalid.')
+    if not isinstance(data.get('digest'),str) or not re.fullmatch('[0-9a-f]{64}',data['digest']):
+        raise ContractError('invalid_message','Document output needs a SHA-256 digest.')
+    if not isinstance(evidence,dict) or evidence.get('digest') != data['digest'] or evidence.get('size_bytes') != size:
+        raise ContractError('candidate_changed','Output evidence differs from the saved file.')
+    if 'pages' in data and (type(data['pages']) is not int or not 0 < data['pages'] <= 100):
+        raise ContractError('invalid_message','Document page count is invalid.')
+    return {'ok':True}

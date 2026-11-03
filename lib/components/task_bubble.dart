@@ -21,6 +21,31 @@ class TaskBubble extends StatefulWidget {
 
 class _TaskBubbleState extends State<TaskBubble> {
   bool _busy = false;
+  Future<void> _documentAction({required bool convert}) async {
+    final task = widget.task;
+    final result = Map<String, dynamic>.from(task['result'] ?? {});
+    final source = Map<String, dynamic>.from(task['input'] ?? {});
+    final path = result['path'] as String? ?? source['name'] as String?;
+    if (path == null) return;
+    final input = <String, dynamic>{
+      if (convert) 'path': path,
+      if (convert) 'to': 'pdf',
+      if (!convert) 'query': path.split('/').last,
+      if (source['grant_id'] != null) 'grant_id': source['grant_id'],
+    };
+    if (convert &&
+        (!await reviewWorkflow(context, 'convert_file', input) || !mounted)) {
+      return;
+    }
+    await widget.store.requestTask(
+      task['device_id'] as String,
+      convert ? 'convert_file' : 'find_document',
+      input,
+      confirmed: convert,
+      utterance: convert ? 'Convert $path to PDF' : 'Get $path on my phone',
+    );
+  }
+
   Future<void> _receive() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -229,6 +254,12 @@ class _TaskBubbleState extends State<TaskBubble> {
       'open_website': 'Open website',
       'open_app': 'Open app',
       'manage_permissions': 'Permissions',
+      'delete_files': 'Move to trash',
+      'restore_deleted': 'Restore file',
+      'empty_trash': 'Empty Pico trash',
+      'archive': 'ZIP files',
+      'convert_file': 'Convert file',
+      'pdf_pages': 'PDF pages',
       'create_note': 'Note',
       'receive_upload': 'Upload',
       'organize_photos': 'Photos',
@@ -243,6 +274,7 @@ class _TaskBubbleState extends State<TaskBubble> {
         ?.map((e) => Map<String, dynamic>.from(e))
         .toList();
     final bubbleText = [
+      result['path'],
       result['message'],
       result['content'],
       result['excerpt'],
@@ -408,6 +440,44 @@ class _TaskBubbleState extends State<TaskBubble> {
                         style: TextStyle(fontSize: 13),
                       ),
                     ),
+                if (status == 'completed' &&
+                    task['kind'] == 'receive_upload' &&
+                    RegExp(
+                      r'\.(jpe?g|png|webp)$',
+                      caseSensitive: false,
+                    ).hasMatch(
+                      (result['path'] ?? task['input']?['name'] ?? '')
+                          .toString(),
+                    ) &&
+                    widget.store.devices.any(
+                      (d) =>
+                          d['id'] == task['device_id'] &&
+                          ((d['document_tools'] as List?) ?? []).contains(
+                            'convert_file',
+                          ),
+                    ))
+                  TextButton.icon(
+                    onPressed: widget.store.busy
+                        ? null
+                        : () => _documentAction(convert: true),
+                    icon: const HeroIcon(HeroIcons.document, size: 18),
+                    label: const Text('Make PDF'),
+                  ),
+                if (status == 'completed' &&
+                    result['path'] is String &&
+                    [
+                      'convert_file',
+                      'pdf_pages',
+                      'restore_deleted',
+                      'archive',
+                    ].contains(task['kind']))
+                  TextButton.icon(
+                    onPressed: widget.store.busy
+                        ? null
+                        : () => _documentAction(convert: false),
+                    icon: const HeroIcon(HeroIcons.arrowDownTray, size: 18),
+                    label: const Text('Get file'),
+                  ),
                 if (result['content'] is String &&
                     result['digest'] is String &&
                     result['path'] is String)
@@ -429,6 +499,14 @@ class _TaskBubbleState extends State<TaskBubble> {
                     task['input']['text'] is String &&
                     (task['input']['text'] as String).isNotEmpty)
                   TaskText(task['input']['text'] as String),
+                if (result['path'] is String &&
+                    [
+                      'convert_file',
+                      'pdf_pages',
+                      'restore_deleted',
+                      'archive',
+                    ].contains(task['kind']))
+                  TaskText(result['path'] as String),
                 if (result['content'] is String)
                   TaskText(result['content'] as String),
                 if (result['excerpt'] is String)

@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 internal sealed class FileAccess : FolderAccessStore {
  internal FileAccess(string file):base(file){}
  static string DisplayReview(JsonObject review) {
-  var fields=new Dictionary<string,string>{{"tool","Action"},{"workspace","Approved workspace"},{"path","File"},{"content","Contents"},{"url","Website"},{"query","Document name"},{"argv_json","Command arguments"},{"cwd","Working folder"},{"timeout_s","Time limit in seconds"},{"folder","Destination folder"}};
+  var fields=new Dictionary<string,string>{{"tool","Action"},{"workspace","Approved workspace"},{"path","File"},{"content","Contents"},{"url","Website"},{"query","Document name"},{"argv_json","Command arguments"},{"cwd","Working folder"},{"timeout_s","Time limit in seconds"},{"folder","Destination folder"},{"to","Convert to"},{"action","Operation"},{"pages","Pages"},{"paths_json","Selected files"},{"confirm","Confirmation"},{"name","Name"}};
   var clean=new JsonObject();foreach(var f in fields)if(review[f.Key]!=null)clean[f.Value]=review[f.Key]!.DeepClone();
   return clean.ToJsonString(new JsonSerializerOptions{WriteIndented=true});
  }
@@ -19,7 +19,7 @@ internal sealed class FileAccess : FolderAccessStore {
   using var f=new Form{Text="Pico folder permissions",StartPosition=FormStartPosition.CenterScreen,Size=new Size(640,470),MinimumSize=new Size(540,360),Padding=new Padding(12),Font=new Font("Segoe UI",10)};
   var list=new ListBox{Dock=DockStyle.Fill,IntegralHeight=false};void Reload(){list.Items.Clear();foreach(var g in Grants)list.Items.Add(g);}Reload();
   var controls=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=100,WrapContents=true};
-  foreach(var mode in new[]{"read","write"}){var b=new Button{Text=mode=="read"?"Read-only folder…":"Write workspace…",AutoSize=true,MinimumSize=new Size(165,40)};b.Click+=(_,_)=>{using var picker=new FolderBrowserDialog{Description=mode=="read"?"Choose a folder Pico may read":"Choose a folder for reviewed writes and commands",UseDescriptionForTitle=true};if(picker.ShowDialog(f)==DialogResult.OK){try{Add(picker.SelectedPath,mode);Reload();}catch(Exception e){MessageBox.Show(f,e.Message,"Pico");}}};controls.Controls.Add(b);}
+  foreach(var mode in new[]{"read","write","delete"}){var b=new Button{Text=mode=="read"?"Read-only folder…":mode=="delete"?"Allow reviewed trash…":"Write workspace…",AutoSize=true,MinimumSize=new Size(165,40)};b.Click+=(_,_)=>{using var picker=new FolderBrowserDialog{Description=mode=="read"?"Choose a folder Pico may read":"Choose a folder for reviewed writes and commands",UseDescriptionForTitle=true};if(picker.ShowDialog(f)==DialogResult.OK){try{Add(picker.SelectedPath,mode);Reload();}catch(Exception e){MessageBox.Show(f,e.Message,"Pico");}}};controls.Controls.Add(b);}
   var remove=new Button{Text="Remove",AutoSize=true,MinimumSize=new Size(100,40)};remove.Click+=(_,_)=>{if(list.SelectedItem is FolderGrant g){Remove(g.Id);Reload();}};controls.Controls.Add(remove);
   f.Controls.Add(list);f.Controls.Add(new Label{Dock=DockStyle.Top,Height=70,Text="Folder permissions\r\nEach write, website, document opening or command also needs your approval. Snapshot exclusions stay separate."});f.Controls.Add(controls);f.ShowDialog(owner);
  }

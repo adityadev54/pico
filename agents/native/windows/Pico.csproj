@@ -6,7 +6,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.7.0</Version>
+    <Version>0.8.4</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>Pico</AssemblyName>
     <ApplicationIcon>Pico.ico</ApplicationIcon>
@@ -15,6 +15,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../../build/windows-runtime.zip" LogicalName="windows-runtime.zip" />
     <EmbeddedResource Include="../../../assets/characters/mica/idle.gif" LogicalName="mica.idle.gif" />
     <EmbeddedResource Include="../../../assets/characters/mica/listening.gif" LogicalName="mica.listening.gif" />
     <EmbeddedResource Include="../../../assets/characters/mica/talking.gif" LogicalName="mica.talking.gif" />

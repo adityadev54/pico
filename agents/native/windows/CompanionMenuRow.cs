@@ -36,7 +36,7 @@ sealed class CompanionMenuRow : Button
         }
         int inset = (int)(52 * scale);
         TextRenderer.DrawText(g, Text, Font, new Rectangle(inset, 0, Width - inset - (int)(40 * scale), Height), ForeColor,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
         using var pen = new Pen(ForeColor, 1.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         var saved = g.Save(); g.TranslateTransform(18 * scale, Height / 2f - 8 * scale); g.ScaleTransform(scale, scale);
         switch (Icon) {

@@ -13,14 +13,19 @@ import '../models/approved_app.dart';
 import '../models/activity.dart';
 import '../models/session.dart';
 import 'computer_tasks.dart';
+import 'character_sync.dart';
 import 'relay_client.dart';
+import 'local_play.dart';
+import 'command_parser.dart';
 
 part 'pico_chat_store.dart';
+part 'pico_play_store.dart';
 part 'pico_session_store.dart';
 part 'pico_connection_store.dart';
 part 'pico_agent_store.dart';
 part 'pico_app_access.dart';
 part 'pico_workflow_store.dart';
+part 'pico_skill_store.dart';
 
 class PicoStore extends ChangeNotifier {
   PicoStore(
@@ -32,6 +37,18 @@ class PicoStore extends ChangeNotifier {
   final SharedPreferences preferences;
   final SupabaseClient? client;
   final RelayClient relay;
+  final List<Map<String, dynamic>> routines = [];
+  bool routinesVisible = false, _routineQuiet = true;
+  String? routineReviewId, _routineCatalogDevice, _routineChatId;
+  String? routineRequest, routineMessage;
+  Timer? _routineTimer;
+  Map<String, dynamic>? pendingPrompt;
+  String? _playChatId, _playOwner, _timerChatId, timerLabel;
+  DateTime? timerEndsAt;
+  Timer? playTimer;
+  final List<Map<String, dynamic>> reminders = [];
+  final Map<String, Timer> _reminderTimers = {};
+  final Map<String, String?> _reminderChatIds = {};
   final List<Place> places = [];
   final List<Map<String, dynamic>> _placeUpdates = [];
   final List<ApprovedApp> approvedApps = [];
@@ -69,6 +86,7 @@ class PicoStore extends ChangeNotifier {
   bool darkMode = false, busy = false, recoveringPassword = false;
   bool _refreshing = false;
   String? _loadedUser, _sentCompanion;
+  DateTime? _companionMoodSentAt;
   Future<void>? _companionSync;
   Timer? _timer, _moodTimer;
   StreamSubscription<AuthState>? _auth;
@@ -116,6 +134,14 @@ class PicoStore extends ChangeNotifier {
         museState = signedIn ? 'checking' : 'off';
         museLabel = signedIn ? 'Checking Muse' : 'Sign in for Muse';
         devices = [];
+        routinesVisible = false;
+        routineReviewId = null;
+        _routineChatId = null;
+        _routineCatalogDevice = null;
+        routines.clear();
+        routineRequest = null;
+        routineMessage = null;
+        _routineTimer?.cancel();
         tasks.clear();
         sessions.clear();
         current = null;
@@ -137,6 +163,7 @@ class PicoStore extends ChangeNotifier {
   }
 
   void newSession() {
+    pendingPrompt = null;
     composingNewChat = true;
     _newChatPlaceIds.clear();
     _hiddenTaskIds.addAll(tasks.map((t) => t['id'] as String));
@@ -172,6 +199,43 @@ class PicoStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reflect live work; historical completed tasks must not replay reactions.
+  void resumeFlowMood() {
+    final statuses = tasks.map((task) => task['status']);
+    setMood(
+      pendingPlaceId != null || statuses.contains('awaiting_approval')
+          ? 'needsYou'
+          : busy ||
+                routineRequest != null ||
+                statuses.any(
+                  (s) => ['queued', 'working', 'verifying'].contains(s),
+                )
+          ? 'working'
+          : pendingPrompt != null
+          ? 'curious'
+          : 'idle',
+    );
+  }
+
+  void _scheduleRestMood() {
+    _moodTimer = Timer(const Duration(seconds: 60), () {
+      if (!busy &&
+          routineRequest == null &&
+          pendingPlaceId == null &&
+          pendingPrompt == null &&
+          !tasks.any(
+            (t) => [
+              'queued',
+              'working',
+              'verifying',
+              'awaiting_approval',
+            ].contains(t['status']),
+          )) {
+        setMood('sleepy');
+      }
+    });
+  }
+
   void setMood(String value) {
     if (![
       'idle',
@@ -182,12 +246,23 @@ class PicoStore extends ChangeNotifier {
       'done',
       'stuck',
       'needsYou',
+      'angry',
+      'curious',
+      'happy',
+      'sleepy',
+      'surprised',
     ].contains(value)) {
       return;
     }
+    if (mood == value) {
+      if (value == 'idle' && !(_moodTimer?.isActive ?? false)) {
+        _scheduleRestMood();
+      }
+      return;
+    }
     _moodTimer?.cancel();
-    if (mood == value) return;
     mood = value;
+    if (value == 'idle') _scheduleRestMood();
     notifyListeners();
     unawaited(
       syncCompanion().catchError((Object _) {
@@ -207,7 +282,7 @@ class PicoStore extends ChangeNotifier {
     if (!signedIn || busy) return;
     final owner = userId;
     busy = true;
-    notifyListeners();
+    setMood('thinking');
     try {
       final chat = await rememberRequest(text);
       if (owner != userId) return;
@@ -233,10 +308,15 @@ class PicoStore extends ChangeNotifier {
       }
     } catch (e) {
       if (owner != userId) return;
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = relayErrorMessage(e);
     } finally {
       if (owner == userId) {
         busy = false;
+        if (error != null) {
+          previewMood('stuck');
+        } else {
+          resumeFlowMood();
+        }
         notifyListeners();
       }
     }
@@ -279,11 +359,11 @@ class PicoStore extends ChangeNotifier {
       );
     } catch (e) {
       if (owner != userId) return;
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = relayErrorMessage(e);
       forgetDeadDevice(device, error);
     } finally {
       if (owner == userId) busy = false;
-      if (mood == 'working') setMood('idle');
+      if (mood == 'working') resumeFlowMood();
       notifyListeners();
     }
   }
@@ -332,10 +412,31 @@ class PicoStore extends ChangeNotifier {
         rows.addAll(history.where((r) => !ids.contains(r['id'])));
       }
       if (owner != userId) return;
+      final previous = {for (final t in tasks) t['id']: t['status']};
       final incoming = rows.map((r) => r['id']).toSet();
       tasks.removeWhere((t) => incoming.contains(t['id']));
       tasks.addAll(rows);
       await importTaskChats(rows);
+      final changed = rows.where(
+        (t) =>
+            previous.containsKey(t['id']) && previous[t['id']] != t['status'],
+      );
+      if (rows.any(
+        (t) => [
+          'queued',
+          'working',
+          'verifying',
+          'awaiting_approval',
+        ].contains(t['status']),
+      )) {
+        resumeFlowMood();
+      } else if (changed.any((t) => t['status'] == 'failed')) {
+        previewMood('angry');
+      } else if (changed.any((t) => t['status'] == 'completed')) {
+        previewMood('happy');
+      }
+
+      if (mood == 'idle' && !(_moodTimer?.isActive ?? false)) resumeFlowMood();
       notifyListeners();
     } catch (_) {
       // Keep last tasks through a network outage.
@@ -368,7 +469,7 @@ class PicoStore extends ChangeNotifier {
       notifyListeners();
       return receipt;
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = relayErrorMessage(e);
       notifyListeners();
       return null;
     }
@@ -381,7 +482,7 @@ class PicoStore extends ChangeNotifier {
       await refreshTasks();
       error = null;
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = relayErrorMessage(e);
     }
     notifyListeners();
   }
@@ -394,7 +495,7 @@ class PicoStore extends ChangeNotifier {
       if (i >= 0) tasks[i] = {...tasks[i], 'status': 'cancelled'};
       error = null;
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = relayErrorMessage(e);
     }
     notifyListeners();
   }
@@ -407,6 +508,8 @@ class PicoStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    clearLocalPlay();
+    _routineTimer?.cancel();
     _moodTimer?.cancel();
     _appsTimer?.cancel();
     _appOpenTimer?.cancel();

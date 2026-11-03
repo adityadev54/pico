@@ -2,8 +2,8 @@
 import json,re,uuid,urllib.error
 from .service import ApiError,identifier,clean_note_name
 from .task_records import view
-TOOLS={'find_document':'search_documents','send_file':'transfer_selected_file','open_website':'open_website','open_app':'open_app','manage_permissions':'manage_permissions','summarize_document':'read_back_file','read_document':'read_back_file','create_note':'fs_write','receive_upload':'fetch_upload','organize_photos':'organize_photos','open_document':'open_document','list_files':'fs_list','read_file':'fs_read','edit_file':'fs_write','run_command':'process_run'}
-REVIEW={'create_note','edit_file','organize_photos','receive_upload','run_command','open_website','open_document'}
+TOOLS={'delete_files':'delete_files','restore_deleted':'restore_deleted','archive':'archive','empty_trash':'empty_trash','convert_file':'convert_file','pdf_pages':'pdf_pages','find_document':'search_documents','send_file':'transfer_selected_file','open_website':'open_website','open_app':'open_app','manage_permissions':'manage_permissions','summarize_document':'read_back_file','read_document':'read_back_file','create_note':'fs_write','receive_upload':'fetch_upload','organize_photos':'organize_photos','open_document':'open_document','list_files':'fs_list','read_file':'fs_read','edit_file':'fs_write','run_command':'process_run'}
+REVIEW={'delete_files','restore_deleted','archive','empty_trash','convert_file','pdf_pages','create_note','edit_file','organize_photos','receive_upload','run_command','open_website','open_document'}
 def text(value,limit=2000):
  if not isinstance(value,str) or len(value)>limit:raise ApiError(400,'Use a shorter text value.')
  return value
@@ -41,6 +41,50 @@ def prepare(service,owner,device,kind,source):
   if not re.fullmatch('[0-9a-f]{64}',str(src.get('artifact_id',''))):raise ApiError(400,'Invalid upload.')
   payload.update(artifact_id=src['artifact_id'],path=clean_note_name(src.get('name')))
  elif kind=='organize_photos':payload['folder']=clean_note_name(src.get('folder'))
+ elif kind in ('delete_files','restore_deleted','archive','empty_trash'):
+  def visible(value):
+   value=text(value,512)
+   if not value or value.startswith(('/', '\\')) or '\\' in value or ':' in value or any(p.startswith('.') for p in value.split('/')):raise ApiError(400,'Use visible relative paths inside the approved folder.')
+   return value
+  if kind=='delete_files':
+   if src.get('confirm')!='DELETE':raise ApiError(400,'Review the exact file before moving it to trash.')
+   payload.update(path=visible(src.get('path','')),confirm='DELETE')
+  elif kind=='restore_deleted':payload['name']=visible(src.get('name',''))
+  elif kind=='empty_trash':
+   if src.get('confirm')!='EMPTY':raise ApiError(400,'Type EMPTY to permanently clear Pico trash.')
+   payload['confirm']='EMPTY'
+  else:
+   if src.get('action') not in ('create','extract'):raise ApiError(400,'Choose create or extract ZIP.')
+   paths=src.get('paths')
+   if not isinstance(paths,list) or not 1<=len(paths)<=200:raise ApiError(400,'Choose up to 200 ZIP source paths.')
+   if src['action']=='extract' and len(paths)!=1:raise ApiError(400,'Extract one ZIP at a time.')
+   payload.update(action=src['action'],paths_json=json.dumps([visible(p) for p in paths]))
+   if src.get('output'):payload['output']=visible(src['output'])
+ elif kind=='convert_file':
+  path=src.get('path','')
+  if not isinstance(path,str) or not path or len(path)>512 or path.startswith(('/', '\\')) or '..' in path.split('/') or any(s.startswith('.') and s!='.' for s in path.split('/')):raise ApiError(400,'Use a visible file inside an approved folder.')
+  target=str(src.get('to','')).lower().lstrip('.')
+  if target not in ('pdf','docx','txt','png','jpg','jpeg','webp'):raise ApiError(400,'Convert to one of: pdf, docx, txt, png, jpg, webp.')
+  payload.update(path=path,to=target)
+ elif kind=='pdf_pages':
+  action=src.get('action','')
+  if action not in ('merge','split','rotate','watermark'):raise ApiError(400,'Unknown PDF action.')
+  given=src.get('paths',src.get('paths_json','[]'))
+  try:paths=json.loads(given) if isinstance(given,str) else given
+  except ValueError:raise ApiError(400,'Use visible PDF files inside an approved folder.')
+  if not isinstance(paths,list) or not paths or len(paths)>10 or any(not isinstance(p,str) or not p or len(p)>512 or p.startswith(('/', '\\')) or '..' in p.split('/') or any(s.startswith('.') and s!='.' for s in p.split('/')) for p in paths):raise ApiError(400,'Use visible PDF files inside an approved folder.')
+  if action=='merge' and len(paths)<2:raise ApiError(400,'Merging needs at least two PDFs.')
+  if action!='merge' and len(paths)!=1:raise ApiError(400,'That PDF action takes one file.')
+  payload.update(action=action,paths_json=json.dumps(paths))
+  if action in ('split','delete'):
+   pages=str(src.get('pages',''))
+   if not re.fullmatch(r'\s*\d+\s*(-\s*\d+\s*)?(,\s*\d+\s*(-\s*\d+\s*)?)*',pages):raise ApiError(400,'Pages look like "1-3,5".')
+   payload['pages']=pages
+  if action=='rotate':
+   if str(src.get('angle','')) not in ('90','180','270'):raise ApiError(400,'Rotation must be 90, 180 or 270 degrees.')
+   payload['angle']=str(src.get('angle'))
+  if action=='watermark':payload['text']=text(src.get('watermark',src.get('text','')),64)
+  if src.get('output'):payload['output']=clean_note_name(src.get('output'))
  elif kind=='open_document':payload['query']=text(src.get('query',''),500)
  elif kind in ('list_files','read_file'):
   path=src.get('path','.')

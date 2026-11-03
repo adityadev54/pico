@@ -2,6 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY relay ./relay
 COPY server ./server
+COPY agents/skills/__init__.py agents/skills/contracts.py ./agents/skills/
 COPY website ./website
 COPY downloads ./downloads
 COPY build/web ./build/web

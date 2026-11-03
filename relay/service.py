@@ -16,11 +16,11 @@ CHARACTERS = ('tuck', 'mica')
 SIZES = ('small', 'medium', 'large')
 # Contract tool vocabulary. Must match server.contract.SUPPORTED_TOOLS and
 # agents.tools.TOOL_REGISTRY names (see agents/tests/test_tools.py).
-TOOL_NAMES = ('search_documents', 'transfer_selected_file', 'capture_current_tab',
+TOOL_NAMES = ('delete_files','restore_deleted','archive','empty_trash','search_documents', 'transfer_selected_file', 'capture_current_tab',
               'create_checklist', 'read_back_file', 'open_resource',
               'open_app', 'open_website', 'manage_permissions',
               'fs_list', 'fs_read', 'fs_write', 'process_run', 'fetch_upload',
-              'organize_photos', 'open_document')
+              'organize_photos', 'open_document', 'convert_file', 'pdf_pages')
 
 
 def stamp():
@@ -169,17 +169,26 @@ class PicoService:
     def enqueue(self, owner, device_id, kind, payload, id=None, phone=False):
         self.owned(owner, device_id)
         from .app_messages import APP_KINDS, app_payload
-        if kind not in ('place', 'companion', 'idle', 'head_start', 'parked', 'tool_call', 'tool_result', 'cancel') and kind not in APP_KINDS:
+        if kind not in ('place', 'companion', 'idle', 'head_start', 'parked', 'tool_call', 'tool_result', 'cancel', 'skill_request', 'skill_result') and kind not in APP_KINDS:
             raise ApiError(400, 'Unsupported Pico message.')
         if kind in APP_KINDS:
             try: payload = app_payload(kind, payload)
             except (ValueError, KeyError, TypeError): raise ApiError(400, 'Invalid approved-app message.') from None
+        if kind == 'skill_request':
+            if set(payload)!={'query','request_id','expires_at'} or payload.get('query') not in ('catalog','teach') and not payload.get('query','').startswith('run:'):
+                raise ApiError(400,'Invalid routine request.')
+            identifier(payload['request_id'])
+            if payload['query'] not in ('catalog','teach'):identifier(payload['query'][4:])
+            if not 0 < int(payload['expires_at'])-int(datetime.now(timezone.utc).timestamp()*1000) <= 60000:
+                raise ApiError(400,'Routine request expired.')
+        if kind == 'skill_result' and set(payload)-{'request_id','status','message','catalog'}:
+            raise ApiError(400,'Invalid routine response.')
         if kind == 'tool_call':
             payload={**payload,'expires_at':str(int(datetime.now(timezone.utc).timestamp()*1000)+60000)}
         allowed = {'place_id', 'sentence', 'character', 'size', 'app', 'head_start', 'mood', 'mood_until',
                    'task_id', 'tool', 'call_id', 'status', 'error_code', 'query', 'candidate_id',
                    'approval_id', 'url', 'grant_id', 'data_json', 'evidence_json', 'message',
-                   'path', 'content', 'base_revision', 'argv_json', 'timeout_s', 'cwd',
+                   'confirm', 'name', 'to', 'action', 'paths_json', 'pages', 'angle', 'text', 'output', 'path', 'content', 'base_revision', 'argv_json', 'timeout_s', 'cwd',
                    'artifact_id', 'folder', 'app_id', 'request_id', 'catalog', 'result', 'expires_at', 'expected_digest', 'expected_size'}
         if set(payload)-allowed:
             raise ApiError(400, 'The mailbox accepts short text only. No snapshots.')
@@ -187,7 +196,7 @@ class PicoService:
             raise ApiError(400, 'Keep each message below 2,000 characters.')
         if 'character' in payload and payload['character'] not in CHARACTERS:
             raise ApiError(400, 'Unknown companion.')
-        if 'mood' in payload and payload['mood'] not in ('idle','listening','talking','working','thinking','done','stuck','needsYou'):
+        if 'mood' in payload and payload['mood'] not in ('idle','listening','talking','working','thinking','done','stuck','needsYou','angry','curious','happy','sleepy','surprised'):
             raise ApiError(400, 'Unknown agent state.')
         if 'mood_until' in payload:
             try: expiry=int(payload['mood_until'])
@@ -480,7 +489,7 @@ class PicoService:
             raise ApiError(400, 'Invalid tool data.') from None
         from server.contract import ContractError
         from server.verification.checks import (
-            check_exact_file, check_fs_manifest, check_open_document,
+            check_document_result, check_exact_file, check_fs_manifest, check_open_document,
             check_organize_manifest, check_process_result, check_search_outcome)
         kind = task.get('kind')
         self.jobs.stop(task['id'])
@@ -490,6 +499,19 @@ class PicoService:
             elif kind == 'send_file':
                 source=task.get('input') or {}
                 check_exact_file(source.get('candidate',{}),source,evidence)
+            elif kind in ('delete_files','empty_trash'):
+                field='trashed_count' if kind=='delete_files' else 'removed_count'
+                if type(data.get(field)) is not int or data[field]<0 or data[field]!=evidence.get('count'):
+                    raise ContractError('invalid_message','Invalid trash result evidence.')
+                if kind=='delete_files' and (data[field]!=1 or not data.get('trashed')):
+                    raise ContractError('invalid_message','Trash result must name the moved file.')
+            elif kind=='restore_deleted' or kind=='archive' and task.get('input',{}).get('action')=='create':
+                check_document_result(data,evidence)
+            elif kind=='archive':
+                if type(data.get('count')) is not int or data['count']<0 or data['count']!=evidence.get('count') or not isinstance(data.get('files'),list):
+                    raise ContractError('invalid_message','Invalid extraction evidence.')
+            elif kind in ('convert_file', 'pdf_pages'):
+                check_document_result(data, evidence)
             elif kind in ('fs_list', 'fs_read', 'fs_write', 'create_note',
                             'receive_upload','edit_file','list_files','read_file'):
                 check_fs_manifest(

@@ -18,7 +18,9 @@ class ToolRegistryTests(unittest.TestCase):
 
     def test_list_tools_is_planner_visible(self):
         listed = {t['name']: t for t in TOOL_REGISTRY.list_tools()}
-        self.assertEqual(len(listed), 16)
+        self.assertEqual(len(listed), 22)
+        self.assertIn('convert_file', listed)
+        self.assertIn('pdf_pages', listed)
         search = listed['search_documents']
         self.assertIn('query', search['args'])
         self.assertEqual(search['execution_target'], 'helper')

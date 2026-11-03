@@ -21,3 +21,10 @@ class ModelSafetyTests(unittest.TestCase):
    cfg={'url':ENDPOINT,'key':'test-key'};task={'id':str(uuid.uuid4()),'owner':'owner-1','input':'Open Calculator'}
    self.assertIn('error',plan(task,[],cfg));self.assertEqual(network.call_count,1)
    self.assertIn('error',plan(task,[],cfg));self.assertEqual(network.call_count,1)
+
+class RoutineCapTests(unittest.TestCase):
+ def test_only_taught_routine_receives_larger_output_limit(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'PICO_MODEL_OWNER_IDS':'owner-1','PICO_MODEL_ENABLED':'1','PICO_MODEL_LEDGER':tmp+'/ledger.sqlite'}):
+   request=urllib.request.Request(ENDPOINT,data=json.dumps({'model':'muse-spark-1.3','max_completion_tokens':1000,'reasoning_effort':'minimal'}).encode())
+   with self.assertRaises(BudgetDenied):authorize(request,{'id':str(uuid.uuid4()),'owner':'owner-1'}, {})
+   authorize(request,{'id':str(uuid.uuid4()),'owner':'owner-1','kind':'taught_routine'}, {})

@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'document_commands.dart';
+import 'file_management_commands.dart';
+
 import '../models/computer_command.dart';
 
 /// True when the text uses command language (addressing Pico, a request
@@ -7,7 +10,7 @@ import '../models/computer_command.dart';
 /// Used to explain the miss instead of failing silently as a note.
 bool looksLikeCommand(String speech) {
   return RegExp(
-    r'^(hey pico|pico|please|can you|could you|would you|will you|open|launch|start|find|search|look for|locate|send|transfer|bring|share|summari[sz]e|google|visit|go to|browse|manage|show|ask (?:pico|picko|piko)|draft|create|make|write|rename|change|arrange|organize|organise|gather|collect)\b',
+    r'^(hey pico|pico|please|can you|could you|would you|will you|open|launch|start|find|search|look for|locate|send|transfer|bring|share|summari[sz]e|google|visit|go to|browse|manage|show|ask (?:pico|picko|piko)|draft|create|make|write|rename|change|arrange|organize|organise|gather|collect|convert|turn|merge|split|rotate|watermark|extract|delete|trash|remove|restore|undelete|empty|zip|unzip|compress)\b',
     caseSensitive: false,
   ).hasMatch(speech.trim());
 }
@@ -114,6 +117,10 @@ ComputerCommand? parseComputerCommand(String speech) {
     device = target.group(1);
     text = text.substring(0, target.start);
   }
+  final files = parseFileManagement(text, device: device);
+  if (files != null) return files;
+  final document = parseDocumentCommand(text, device: device);
+  if (document != null) return document;
   ComputerCommand command(String kind, Map<String, dynamic> input) =>
       ComputerCommand(kind, input, deviceHint: device);
   if (RegExp(
