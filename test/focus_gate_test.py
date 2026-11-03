@@ -89,3 +89,12 @@ class FocusGateTests(unittest.TestCase):
             c.native_panel({'action':'place_action','id':identity,'choice':'continue'})
         c.platform.open_app.assert_called_once_with('com.apple.Notes')
         self.assertEqual(c.state['places'][identity]['status'],'finished')
+
+    def test_native_focus_menu_reaches_python_worker(self):
+        from unittest.mock import patch
+        import macos
+        events=queue.Queue()
+        with patch('macos.subprocess.Popen',return_value=Mock(stdout=iter(['focus\n']))), patch('macos.threading.Thread') as thread:
+            thread.side_effect=lambda target,**kw:Mock(start=target)
+            macos.start_overlay(events)
+        self.assertEqual(events.get_nowait(),('overlay_action','focus'))

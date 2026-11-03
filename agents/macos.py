@@ -70,7 +70,7 @@ def start_overlay(events):
                     elif value.get('action') in ('preferences','place_action','open_place','clear_snapshots','pause','unpair','open_app','permissions','task_approval','teach','show_teach','show_places','refresh_screen_access','request_screen_access','folder_grant'):events.put(('native_panel',value))
                 except (ValueError, TypeError):pass
                 continue
-            if action in ('permissions', 'applications', 'parked', 'teach', 'unpair', 'quit'):
+            if action in ('permissions', 'applications', 'parked', 'teach', 'focus', 'unpair', 'quit'):
                 events.put(('overlay_action', action))
     threading.Thread(target=actions, daemon=True).start()
     return process
