@@ -15,6 +15,8 @@ from tkinter import messagebox
 from PIL import Image, ImageTk, ImageSequence
 from client import DeviceClient,DeviceError
 from head_start import prepare
+from focus_gate import hold_result, may_run_focused
+from capture_policy import private_context, NEVER_SNAPSHOT
 from skills.controller import SkillsController
 from app_access import approved_apps, catalog, open_selected
 
@@ -27,7 +29,7 @@ class Companion:
         self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
         self.config=self.directory/'connection.json';self.state_file=self.directory/'places.json'
         self.lock=threading.RLock();self.events=queue.Queue();self.stopped=threading.Event();self.acks=[]
-        self.state={'places':{},'allowed_apps':[],'grants':[],'task_journal':{},'handled':[],'outgoing':[],'character':'tuck','size':'medium','idle_minutes':2,'snapshots':False,'excluded_apps':[],'notice_idle':True,'prepare':False,'share_snapshot':False,'reopen':True,'retention_days':7,'paused_until':0}
+        self.state={'places':{},'allowed_apps':[],'grants':[],'task_journal':{},'handled':[],'outgoing':[],'character':'tuck','size':'medium','idle_minutes':1,'focused':False,'snapshots':False,'excluded_apps':[],'notice_idle':True,'prepare':False,'share_snapshot':False,'reopen':True,'retention_days':7,'paused_until':0}
         if self.state_file.exists():
             self.state.update(json.loads(self.state_file.read_text()))
         if self.state.get('character') not in ('tuck','mica'):
@@ -58,11 +60,12 @@ class Companion:
         self.menu.add_command(label='Pico permissions',command=self.permissions)
         self.menu.add_command(label='Teach a routine…',command=self.skills.show)
         self.menu.add_command(label='Parked Places',command=self.show_parked)
+        self.menu.add_command(label='Toggle focus',command=self.toggle_focus)
         self.menu.add_command(label='Unpair',command=self.unpair)
         self.menu.add_command(label='Quit Pico',command=self.quit)
         for binding in ('<Button-3>','<Control-Button-1>'):
             self.root.bind(binding,lambda event:self.menu.tk_popup(event.x_root,event.y_root))
-        self.load_character();self.root.geometry(f'+{self.root.winfo_screenwidth()-240}+{self.root.winfo_screenheight()-260}')
+        self.sync_focus_menu();self.load_character();self.root.geometry(f'+{self.root.winfo_screenwidth()-240}+{self.root.winfo_screenheight()-260}')
         if not self.overlay:
             self.root.deiconify();self.root.after(100,self.animate)
         self.root.after(150,self.process_events)
@@ -98,7 +101,21 @@ class Companion:
         self.frames=frames;self.frame=0
         self.label.configure(width=size,height=size)
 
+    def sync_focus_menu(self):
+        if self.overlay:self.overlay_message({'command':'focus_state','focused':'true' if self.state.get('focused') else 'false'})
+
+    def toggle_focus(self):
+        self.state['focused']=not self.state.get('focused',False);self.save();self.sync_focus_menu()
+        if self.state['focused']:
+            if self.card and self.card.winfo_exists():self.card.destroy()
+            if self.overlay:self.overlay_message({'command':'dismiss_reply'})
+        else:self.show_parked()
+
     def present(self, mood='idle', text='', place_id='', seconds=12):
+        if self.state.get('focused'):
+            if text and mood in ('happy','angry'):
+                hold_result(self.state,text,place_id);self.save()
+            return
         self.mood=mood;self.mood_until=time.time()+seconds if mood!='idle' else 0
         self.load_character()
         if self.overlay and text:
@@ -201,21 +218,22 @@ class Companion:
 
     def hold_context(self, info):
         id=str(uuid.uuid4());snapshot=None
-        blocked=any(app.get('bundle')==info.get('bundle') for app in self.state['excluded_apps']) or any(word in info.get('title','').lower() for word in ['incognito','private browsing'])
+        blocked=private_context(info,self.state['excluded_apps'])
         if self.state['snapshots'] and info.get('screen_access') and not blocked:
             folder=Path.home()/'Pictures/PICO Places';folder.mkdir(parents=True,exist_ok=True)
             snapshot=folder/(datetime.now().strftime('%Y-%m-%d_%H%M%S')+'_'+id[:8]+'.png')
             try:
-                capture=self.platform.context(snapshot, [a.get('bundle','') for a in self.state['excluded_apps']])
+                capture=self.platform.context(snapshot, sorted(NEVER_SNAPSHOT | {a.get('bundle','') for a in self.state['excluded_apps']}))
                 if not capture.get('snapshot_saved'):snapshot=None
                 else:info={**info,**capture}
             except Exception:snapshot=None
         with self.lock:
-            self.state['places'][id]={'id':id,'app':info.get('app',''),'bundle':info.get('bundle',''),'snapshot':str(snapshot) if snapshot else None,'sentence':'','status':'waiting','created':time.time()}
+            self.state['places'][id]={'id':id,'app':info.get('app',''),'bundle':info.get('bundle',''),'snapshot':str(snapshot) if snapshot else None,'title':info.get('title',''),'sentence':'','status':'waiting','created':time.time()}
             self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'idle','payload':{'place_id':id,'app':str(info.get('app',''))[:120]}})
         self.save()
 
     def consume(self, message):
+        if self.state.get('focused') and not may_run_focused(message['kind'],message.get('payload',{})):return
         if message['kind']=='skill_request':self.skills.receive(message);return
         if message['kind']=='tool_call':
             self.consume_task(message);return
@@ -270,7 +288,7 @@ class Companion:
         if previous!=client.device_id and (previous or fresh):
             archive=self.directory/'account-history';archive.mkdir(mode=0o700,exist_ok=True)
             file=archive/(str(uuid.uuid4())+'.json');file.write_text(json.dumps(self.state));os.chmod(file,0o600)
-            for key,empty in [('places',{}),('outgoing',[]),('handled',[]),('task_journal',{}),('grants',[]),('allowed_apps',[])]:self.state[key]=empty
+            for key,empty in [('places',{}),('outgoing',[]),('handled',[]),('task_journal',{}),('grants',[]),('allowed_apps',[]),('focused',False)]:self.state[key]=empty
             self.acks=[]
         self.state['paired_device']=client.device_id;self.save()
 
@@ -301,6 +319,7 @@ class Companion:
             for old in list(journal)[:-200]:journal.pop(old,None)
 
     def approve_task(self,review):
+        if self.state.get('focused'):return False
         identity=str(uuid.uuid4());event=threading.Event();answer={'event':event,'allowed':False}
         self.approvals[identity]=answer
         self.events.put(('presentation',('needsYou','','',60)))
@@ -310,6 +329,7 @@ class Companion:
         return answer['allowed']
 
     def request_folder_grant(self, access):
+        if self.state.get('focused'):return None
         if not hasattr(self,'grant_requests'):return None
         identity=str(uuid.uuid4());event=threading.Event();client=self.client
         answer={'event':event,'path':None,'access':access}
@@ -338,7 +358,7 @@ class Companion:
             if cancelled():fn()
         self.events.put(('presentation',('working','','',60)))
         result=execute(payload,self.state,self.platform,lambda:self.events.put(('show_permissions',None)),client=self.client,approve=self.approve_task,cancelled=cancelled,register_cancel=register,unregister_cancel=lambda:self.running_tasks.pop(task,None),refresh_grants=self.refresh_grants,request_grant=self.request_folder_grant)
-        self.events.put(('presentation',('happy' if result['status']=='succeeded' else 'angry',result.get('message','Request finished.'),'',4)))
+        self.events.put(('presentation',('happy' if result['status']=='succeeded' else 'angry',result.get('message','Request finished.'),payload.get('task_id',''),4)))
         return result
 
     def queue_app_catalog(self):
@@ -379,14 +399,15 @@ class Companion:
     def show_card(self, id, details=False):
         place=self.state['places'][id]
         if place.get('status')=='finished':return
+        if self.state.get('focused') and not details:return
         if not place.get('sentence'):
-            self.events.put(('notice','Waiting for your next step on the phone.'));return
+            place['sentence']='Working in '+(place.get('app') or 'your app')
         if self.overlay:
             self.native_card_id=id
             if not details:
                 self.present('talking' if place.get('head_start') else 'idle', place.get('head_start') or place['sentence'], id)
                 return
-            self.overlay_message({'command':'welcome','payload':json.dumps({'id':id,'sentence':place['sentence'],**({'head_start':place['head_start']} if place.get('head_start') else {})})});return
+            self.overlay_message({'command':'welcome','payload':json.dumps({'id':id,'sentence':place['sentence'],'snapshot':place.get('snapshot'),**({'head_start':place['head_start']} if place.get('head_start') else {})})});return
         if self.card and self.card.winfo_exists():self.card.destroy()
         card=tk.Toplevel(self.root);self.card=card;card.title('Welcome back');card.configure(bg='#F5F1EE');card.attributes('-topmost',True)
         frame=tk.Frame(card,bg='#F5F1EE',padx=12,pady=12);frame.pack()
@@ -400,7 +421,7 @@ class Companion:
             place.update(status='finished',finished=time.time());self.save();card.destroy()
         def park():
             place['status']='parked'
-            with self.lock:self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'parked','payload':{'place_id':id,'sentence':place['sentence']}})
+            with self.lock:self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'parked','payload':{'place_id':id,'sentence':place['sentence']}}) if not place.get('local_result') else None
             self.save();card.destroy()
         tk.Button(actions,text='Continue',command=resume,padx=12,pady=12).grid(row=0,column=0,sticky='ew',padx=(0,6))
         tk.Button(actions,text='Park it',command=park,padx=12,pady=12).grid(row=0,column=1,sticky='ew',padx=(6,0))
@@ -474,7 +495,7 @@ class Companion:
                 if self.state['reopen']:self.reopen_approved(place.get('bundle'))
             elif value.get('choice')=='park':
                 place['status']='parked'
-                self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'parked','payload':{'place_id':value['id'],'sentence':place['sentence']}})
+                self.state['outgoing'].append({'id':str(uuid.uuid4()),'kind':'parked','payload':{'place_id':value['id'],'sentence':place['sentence']}}) if not place.get('local_result') else None
             self.save();self.present()
             self.overlay_message({'command':'dismiss_reply'})
         elif action=='pause':self.state['paused_until']=time.time()+3600;self.save()
@@ -509,9 +530,10 @@ class Companion:
             while True:
                 kind,value=self.events.get_nowait()
                 if kind=='overlay_action':
-                    {'permissions':self.permissions,'applications':self.applications,'parked':self.show_parked,'teach':self.skills.show,'unpair':self.unpair,'quit':self.quit}[value]()
+                    {'permissions':self.permissions,'applications':self.applications,'parked':self.show_parked,'teach':self.skills.show,'focus':self.toggle_focus,'unpair':self.unpair,'quit':self.quit}[value]()
                     if value=='quit':return
-                elif kind=='skills_show':self.skills.show(value)
+                elif kind=='skills_show':
+                    if not self.state.get('focused'):self.skills.show(value)
                 elif kind=='native_panel':self.native_panel(value)
                 elif kind=='native_pair':self.native_pair(value)
                 elif kind=='native_paired':
@@ -539,7 +561,7 @@ class Companion:
                 elif kind=='show_permissions':self.permissions()
                 elif kind=='return':
                     for id,place in reversed(list(self.state['places'].items())):
-                        if place.get('status') in ('ready','parked'):self.show_card(id);break
+                        if place.get('status') in ('waiting','ready','parked'):self.show_card(id);break
                 elif kind=='draft':
                     if self.overlay and self.native_card_id==value:self.show_card(value)
                     if self.card and self.card.winfo_exists():self.show_card(value)
@@ -548,6 +570,8 @@ class Companion:
                     if self.card and self.card.winfo_exists():self.card.destroy()
                     self.pairing()
                 elif kind=='notice':
+                    if self.state.get('focused'):
+                        hold_result(self.state,value);self.save();continue
                     if self.overlay:self.overlay_message({'command':'notice','payload':json.dumps({'message':value})})
                     else:messagebox.showinfo('Pico',value,parent=self.root)
         except queue.Empty:pass

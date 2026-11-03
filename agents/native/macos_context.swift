@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 let excluded: [String] = CommandLine.arguments.count > 3
     ? ((try? JSONSerialization.jsonObject(with: Data(CommandLine.arguments[3].utf8))) as? [String] ?? []) : []
+let neverSnapshot = ["com.apple.MobileSMS", "com.apple.mail", "com.apple.Passwords", "com.apple.keychainaccess", "com.agilebits.onepassword7", "com.1password.1password", "org.whispersystems.signal-desktop", "net.whatsapp.WhatsApp", "com.tinyspeck.slackmacgap"]
 var result: [String: Any] = ["idle": CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!), "screen_access": CGPreflightScreenCaptureAccess()]
 if let app = NSWorkspace.shared.frontmostApplication {
     result["app"] = app.localizedName ?? "Unknown app"
@@ -15,6 +16,7 @@ if let app = NSWorkspace.shared.frontmostApplication {
         // Capture only this active app window, never the full display.
         if CommandLine.arguments.count >= 3 && CommandLine.arguments[1] == "snapshot",
            !excluded.contains(app.bundleIdentifier ?? ""),
+           !neverSnapshot.contains(app.bundleIdentifier ?? ""),
            !(result["title"] as? String ?? "").lowercased().contains("incognito"),
            !(result["title"] as? String ?? "").lowercased().contains("private browsing"),
            CGPreflightScreenCaptureAccess(),

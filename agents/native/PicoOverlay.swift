@@ -48,7 +48,7 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         content.addSubview(reply)
         window.contentView = content
         let menu = NSMenu()
-        for (title, action) in [("Open apps…", "applications"), ("Permissions…", "permissions"), ("Parked Places", "parked"), ("Teach a routine…", "teach"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
+        for (title, action) in [("I’m focused", "focus"), ("Open apps…", "applications"), ("Permissions…", "permissions"), ("Parked Places", "parked"), ("Teach a routine…", "teach"), ("Unpair…", "unpair"), ("Quit Pico", "quit")] {
             let item = NSMenuItem(title: title, action: #selector(selectAction(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = action; menu.addItem(item)
         }
@@ -72,6 +72,12 @@ final class PicoOverlay: NSObject, NSApplicationDelegate {
         if panels.permissions?.isVisible == true { emit(["action":"refresh_screen_access"]) }
     }
     func update(_ value: [String: String]) {
+        if value["command"] == "focus_state" {
+            let focused = value["focused"] == "true"
+            if focused { reply.isHidden = true;panels.welcome?.close();panels.placesWindow?.close() }
+            image.menu?.items.first(where: { $0.representedObject as? String == "focus" })?.title = focused ? "I’m done — show results" : "I’m focused"
+            return
+        }
         if let command = value["command"], ["permissions","applications","welcome","notice","approval","places","teach","folder_grant"].contains(command) { panels.handle(command,payload:value["payload"] ?? "{}");return }
         if value["command"] == "pairing" { showPairing(); return }
         if value["command"] == "pair_status" {

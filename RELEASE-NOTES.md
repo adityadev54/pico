@@ -1,3 +1,11 @@
+## Mac 0.8.3 (23) / Windows 0.8.7
+
+- Persistent focus gate: silent result cards wait in Places until you finish; interrupting incoming actions stay queued.
+- Mac return cards now show saved local previews. All Places remain reachable in the scrolling list.
+- Windows Continue reopens the captured app through its existing approval, with a reopening switch.
+- New installs default to a one-minute step-away timer; existing timer settings are preserved.
+- Phone remains 0.8.4 (24). No new APK is needed for these desktop changes.
+
 # Windows 0.8.6 / Phone 0.8.4 (24)
 
 - Natural requests resolve approved app names (including Chat GPT / Galaxy Buds spacing) instead of treating them as filenames. App approval remains local and mandatory.

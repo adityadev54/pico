@@ -76,3 +76,9 @@ Generated builds, downloads, environments, private reports and pairing state are
 - New moods are automatic motion on the original GIFs, not five newly drawn facial animations. [Mood behavior →](companion-moods.md)
 - Muse access and spending limits are server-controlled. A reservation is not a provider invoice. Model requests are not automatically retried.
 
+
+### Focus and step-away
+
+Right-click the desktop companion → **I’m focused**. Read-only tasks and approved routine runs may finish silently; new app-opening, write, command and permission requests wait in the relay until **I’m done — show results**. Expired requests remain expired. Results persist locally in Places; Continue dismisses a result, and dismissed results are not re-created by replay. Focus mode is local to each computer; it does not yet expose per-request Now/Background controls on the phone.
+
+In Permissions / Hold my place, select **1 minute**. Existing saved timer choices are preserved. At the idle transition Pico saves the app context once and sends the phone a next-step prompt. Snapshots need opt-in and OS access; Windows additionally requires a selected preview app, and excludes browsers and sensitive apps. Captures remain local, with previews in the desktop return card. This checkout does not send them to Muse or generate AI guesses. On return, Continue reopens the captured app only if it is still approved and reopening is enabled. It does not restore an exact document, tab or cursor position. A Place created only on the phone may have no captured app to reopen.

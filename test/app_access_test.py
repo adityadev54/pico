@@ -61,7 +61,9 @@ class AppAccessTests(unittest.TestCase):
             helper.platform = SimpleNamespace(context=capture)
             helper.save = lambda: None
             helper.hold_context({'app': 'Allowed', 'bundle': 'allowed.app', 'screen_access': True})
-            self.assertEqual(calls, [['private.app']])
+            self.assertEqual(len(calls),1)
+            self.assertIn('private.app', calls[0])
+            self.assertIn('com.apple.MobileSMS', calls[0])
             self.assertIsNone(next(iter(helper.state['places'].values()))['snapshot'])
 
     def test_snapshot_tracks_actual_captured_app(self):

@@ -24,6 +24,7 @@ sealed partial class Companion {
   }catch{SetCharacter(current??"tuck","angry");moodUntil=DateTimeOffset.UtcNow.AddSeconds(4).ToUnixTimeMilliseconds();throw;}
  }
  void PublishSkills(JsonArray rows,string request,string status,string message) {
+  if(status is "completed" or "failed")ShowReply(message,resultId:"skill:"+request);
   var safe=new JsonArray();foreach(var row in rows.Take(12)){var copy=(JsonObject)row!.DeepClone();copy.Remove("root");safe.Add(copy);}
   while(safe.ToJsonString().Length>5900&&safe.Count>0)safe.RemoveAt(safe.Count-1);
   state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="skill_result",["payload"]=new JsonObject{["request_id"]=request,["status"]=status,["message"]=message[..Math.Min(1200,message.Length)],["catalog"]=safe.ToJsonString()}});Save();

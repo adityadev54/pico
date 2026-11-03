@@ -107,7 +107,7 @@ sealed partial class Companion : Form
         companionMenu = new CompanionMenu(picture.RectangleToScreen(picture.ClientRectangle), startup, () => {
             using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             if (!startup) run.SetValue("Pico", "\"" + Environment.ProcessPath + "\""); else run.DeleteValue("Pico", false);
-        }, ShowAppAccess, ShowParked, Disconnect, Close, () => fileAccess.Show(this), ShowTeach, ShowCaptureSettings);
+        }, ShowAppAccess, ShowParked, Disconnect, Close, () => fileAccess.Show(this), ShowTeach, ShowCaptureSettings, ToggleFocus, FocusGate.Active(state));
         companionMenu.Show(this);
     }
     void ShowAppAccess() { using var window = new AppAccessWindow(appAccess, QueueAppCatalog); window.ShowDialog(); }
@@ -152,6 +152,7 @@ sealed partial class Companion : Form
         Schedule(1000); await Task.CompletedTask;
     }
     bool ReviewTask(JsonObject review) {
+        if(FocusGate.Active(state))return false;
         SetCharacter(current ?? "tuck","needsYou");
         moodUntil=DateTimeOffset.UtcNow.AddSeconds(60).ToUnixTimeMilliseconds();
         bool allowed=FileAccess.Approve(this,review);
@@ -181,7 +182,7 @@ sealed partial class Companion : Form
             SetCharacter(current ?? "tuck",outcome["status"]?.GetValue<string>()=="succeeded"?"happy":"angry");
             moodUntil=DateTimeOffset.UtcNow.AddSeconds(4).ToUnixTimeMilliseconds();
             state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="tool_result",["payload"]=outcome});
-            state["task_journal"]![mailId]=new JsonObject{["status"]="finished"};var handled=state["handled"]!.AsArray();handled.Add(mailId);while(handled.Count>200)handled.RemoveAt(0);Save();ShowReply(outcome["message"]?.GetValue<string>()??"Request finished.");
+            state["task_journal"]![mailId]=new JsonObject{["status"]="finished"};var handled=state["handled"]!.AsArray();handled.Add(mailId);while(handled.Count>200)handled.RemoveAt(0);Save();ShowReply(outcome["message"]?.GetValue<string>()??"Request finished.", resultId:"task:"+task);
         } finally {runningTasks.TryRemove(task,out _);}
     }
     void SetCharacter(string name, string? activity = null)
@@ -202,7 +203,13 @@ sealed partial class Companion : Form
         picture.Bounds = new Rectangle((ClientSize.Width - agentSide) / 2, 100, agentSide, agentSide);
         reply.Bounds = new Rectangle(6, 8, ClientSize.Width - 12, 80);
     }
-    void ShowReply(string text, string? placeId = null) {
+    void ToggleFocus() {
+        state["focused"]=!FocusGate.Active(state);Save();reply.Visible=false;
+        if(FocusGate.Active(state))foreach(var form in Application.OpenForms.Cast<Form>().Where(f=>f.Text is "Welcome back" or "Parked Places").ToArray())form.Close();
+        if(!FocusGate.Active(state))ShowParked();
+    }
+    void ShowReply(string text, string? placeId = null, string? resultId = null) {
+        if(FocusGate.Active(state)){FocusGate.Hold(state,text,resultId??placeId);Save();return;}
         replyPlace = placeId; reply.SetReply(text); reply.Visible = true;
         replyTimer.Stop(); replyTimer.Start();
     }
@@ -224,6 +231,7 @@ sealed partial class Companion : Form
                 {
                     var data = item["payload"]!.AsObject();
                     string kind = item["kind"]!.GetValue<string>();
+                    if(FocusGate.Active(state)&&!FocusGate.MayRun(kind,data))continue;
                     if (kind == "cancel") {var taskId=data["task_id"]?.GetValue<string>()??"";if(runningTasks.TryGetValue(taskId,out var active))active.Cancel();}
                     if (kind == "tool_call") {
                         if(state["task_journal"]![id]?["status"]?.GetValue<string>()=="running")continue;
@@ -245,7 +253,7 @@ sealed partial class Companion : Form
                         SetCharacter(data["character"]?.GetValue<string>() ?? "tuck", activity);
                         agentSide = data["size"]?.GetValue<string>() switch { "small" => 138, "large" => 224, _ => 180 };
                         LayoutAgent();
-                        if (activity == "listening") ShowReply("Listening on your phone…");
+                        if (activity == "listening" && !FocusGate.Active(state)) ShowReply("Listening on your phone…");
                     }
                     if(kind=="parked") {
                         string placeId=data["place_id"]!.GetValue<string>();
@@ -286,7 +294,7 @@ sealed partial class Companion : Form
         catch { failures = Math.Min(failures + 1, 4); }
         finally { busy = false; if (token != null) Schedule(Math.Min(60000, 1000 * (1 << failures))); }
     }
-    void ClearConnection() { timer.Stop(); replyTimer.Stop(); reply.Visible = false; SetCharacter(current ?? "tuck", "idle"); token = null; File.Delete(tokenFile);  }
+    void ClearConnection() { timer.Stop(); replyTimer.Stop(); reply.Visible = false; SetCharacter(current ?? "tuck", "idle"); token = null; state["focused"]=false; state["places"]=new JsonObject();Save(); File.Delete(tokenFile);  }
     async Task Disconnect()
     {
         try
@@ -306,6 +314,7 @@ sealed partial class Companion : Form
     }
 
     void ShowPlace(string id) {
+        if(FocusGate.Active(state))return;
         var place = state["places"]![id]!;
         if (place["status"]?.GetValue<string>() == "finished") return;
         var text = place["head_start"]?.GetValue<string>() ?? place["sentence"]?.GetValue<string>() ?? "";
@@ -323,8 +332,11 @@ sealed partial class Companion : Form
         var text = new Label { Text = sentence, Location = new Point(20,62), Size = new Size(340,85) };
         var resume = new Button { Text = "Continue", Location = new Point(20,160), Size = new Size(164,36) };
         var park = new Button { Text = "Park it", Location = new Point(196,160), Size = new Size(164,36) };
-        resume.Click += (_,_) => { Clipboard.SetText(sentence); place["status"] = "finished"; Save(); form.Close(); };
-        park.Click += (_,_) => { place["status"] = "parked"; state["outgoing"]!.AsArray().Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["kind"] = "parked", ["payload"] = new JsonObject { ["place_id"] = id, ["sentence"] = sentence } }); Save(); form.Close(); };
+        resume.Click += (_,_) => { if(captureSettings.Reopen && place["app_id"]?.GetValue<string>() is string appId) {
+            var opened=appAccess.Open(appId);if(!opened.Opened){MessageBox.Show(form,opened.Message,"Pico");return;}
+        }
+        Clipboard.SetText(sentence); place["status"] = "finished"; Save(); form.Close(); };
+        park.Click += (_,_) => { place["status"] = "parked"; if(place["local_result"]?.GetValue<bool>()!=true)state["outgoing"]!.AsArray().Add(new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["kind"] = "parked", ["payload"] = new JsonObject { ["place_id"] = id, ["sentence"] = sentence } }); Save(); form.Close(); };
         form.Controls.AddRange([title,text,resume,park]);
         string? snapshot=place["snapshot"]?.GetValue<string>();
         string snapshotRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),"PICO Places")+Path.DirectorySeparatorChar;

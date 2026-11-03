@@ -13,12 +13,15 @@ sealed partial class Companion {
     var excluded=appAccess.Excluded.Select(app=>app.Path).ToList();
     var result=await Task.Run(()=>WindowsCapture.Capture(window,captureSettings,id,excluded));
     if(account!=token)return;
-    state["places"]![id]=new JsonObject{["sentence"]="",["status"]="waiting",["app"]=result.App,["title"]=result.Title,["snapshot"]=result.Snapshot,["created"]=DateTimeOffset.UtcNow.ToUnixTimeSeconds()};
+    state["places"]![id]=new JsonObject{["sentence"]="",["status"]="waiting",["app"]=result.App,["title"]=result.Title,["snapshot"]=result.Snapshot,["app_id"]=appAccess.Allowed.FirstOrDefault(a=>string.Equals(a.Path,result.Target,StringComparison.OrdinalIgnoreCase))?.Id,["created"]=DateTimeOffset.UtcNow.ToUnixTimeSeconds()};
     state["outgoing"]!.AsArray().Add(new JsonObject{["id"]=Guid.NewGuid().ToString(),["kind"]="idle",["payload"]=new JsonObject{["place_id"]=id,["app"]=result.App[..Math.Min(120,result.App.Length)]}});Save();
     SetCharacter(current??"tuck","surprised");moodUntil=DateTimeOffset.UtcNow.AddSeconds(4).ToUnixTimeMilliseconds();
    }finally{capturing=false;}
   }
-  if(away&&!idle){away=false;if(activePlace!=null)ShowPlace(activePlace);}
+  if(away&&!idle){away=false;
+   var latest=state["places"]!.AsObject().LastOrDefault(p=>p.Value?["status"]?.GetValue<string>() is "waiting" or "ready" or "parked");
+   if(latest.Key!=null&&!FocusGate.Active(state))ShowPlaceDetails(latest.Key);
+  }
  }
  void ShowCaptureSettings() {
   using var form=new Form{Text="Hold my place",ClientSize=new Size(590,310),StartPosition=FormStartPosition.CenterScreen,Font=new Font("Segoe UI",10),Padding=new Padding(16)};
@@ -29,8 +32,10 @@ sealed partial class Companion {
   var apps=new Button{Text="Choose an app for previews…",AutoSize=true};
   apps.Click+=(_,_)=>{using var pick=new InstalledAppPicker(true);if(pick.ShowDialog(form)==DialogResult.OK && pick.SelectedApp is InstalledApp selected){captureSettings.AllowedCaptureApps.Add(selected.Target);captureSettings.Save();}};
   var clear=new Button{Text="Remove all preview app permissions",AutoSize=true};clear.Click+=(_,_)=>{captureSettings.AllowedCaptureApps.Clear();captureSettings.Save();};
+  var reopen=new CheckBox{Text="Reopen the saved app when I continue",Checked=captureSettings.Reopen,AutoSize=true};
+  reopen.CheckedChanged+=(_,_)=>{captureSettings.Reopen=reopen.Checked;captureSettings.Save();};
   var hint=new Label{Text="Minutes before stepping away. Previews stay on this computer. Browsers, messaging and password apps are excluded. No screen images are sent to Muse.",AutoSize=true,MaximumSize=new Size(550,0)};
   enabled.CheckedChanged+=(_,_)=>{captureSettings.Enabled=enabled.Checked;captureSettings.Save();};minutes.ValueChanged+=(_,_)=>{captureSettings.Minutes=(int)minutes.Value;captureSettings.Save();};snapshots.CheckedChanged+=(_,_)=>{captureSettings.Snapshots=snapshots.Checked;captureSettings.Save();};
-  rows.Controls.AddRange([enabled,minutes,snapshots,apps,clear,hint]);form.Controls.Add(rows);form.ShowDialog(this);
+  rows.Controls.AddRange([enabled,minutes,snapshots,reopen,apps,clear,hint]);form.Controls.Add(rows);form.ShowDialog(this);
  }
 }

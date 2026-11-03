@@ -10,7 +10,7 @@ sealed class CompanionMenu : Form
     readonly Label heading;
     readonly Panel separator;
 
-    internal CompanionMenu(Rectangle anchor, bool startup, Action toggleStartup, Action apps, Action parked, Func<Task> disconnect, Action quit, Action? folders = null, Action? teach = null, Action? settings = null)
+    internal CompanionMenu(Rectangle anchor, bool startup, Action toggleStartup, Action apps, Action parked, Func<Task> disconnect, Action quit, Action? folders = null, Action? teach = null, Action? settings = null, Action? focus = null, bool focused = false)
     {
         this.anchor = anchor;
         AutoScaleMode = AutoScaleMode.None;
@@ -32,6 +32,7 @@ sealed class CompanionMenu : Form
             row.Click += async (_, _) => { Close(); try { await action(); } catch { MessageBox.Show("Couldn’t complete this action. Please try again.", "Pico"); } };
             rows.Add(row); list.Controls.Add(row);
         }
+        if(focus!=null) Add(focused ? "I’m done — show results" : "I’m focused", CompanionMenuIcon.Parked, () => { focus(); return Task.CompletedTask; }, focused);
         if(teach!=null) Add("Teach a routine…", CompanionMenuIcon.Apps, () => { teach(); return Task.CompletedTask; });
         if(settings!=null) Add("Hold my place", CompanionMenuIcon.Parked, () => { settings(); return Task.CompletedTask; });
         Add("Open apps", CompanionMenuIcon.Apps, () => { apps(); return Task.CompletedTask; });

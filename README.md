@@ -16,6 +16,7 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 
 ## What it does
 
+- **Focus gate:** choose “I’m focused” from the companion menu; results wait in Places until “I’m done.” App-opening and reviewed actions wait too.
 - **Hold your place:** save and park unfinished work, then return to it on your computer.
 - **Reach your computer:** find files, transfer a selected document, and open approved apps or websites.
 - **Watch & repeat:** show Pico an example result, then run the learned routine from your phone.

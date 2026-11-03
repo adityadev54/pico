@@ -23,5 +23,15 @@ internal static class Program {
  p=Payload("archive");Check((await Run(p))["status"]!.ToString()=="succeeded"&&runtime.Calls==1,"approved archive reaches shared worker");
  var g=grants.Grants[0];bool escaped=false;try{grants.Resolve(g,"../outside");}catch{escaped=true;}Check(escaped,"relative escape blocked");
  Check(grants.Catalog()["document_tools"]!.AsArray().Count==2,"document capabilities advertised");
+ var focus=new JsonObject{["places"]=new JsonObject(),["focused"]=true};
+ Check(FocusGate.Active(focus),"focus state is active");
+ FocusGate.Hold(focus,"Saved output","task1");FocusGate.Hold(focus,"Saved output","task1");
+ FocusGate.Hold(focus,"Saved output","task2");Check(focus["places"]!.AsObject().Count==2,"replay deduplicated without losing distinct tasks");
+ var restored=JsonNode.Parse(focus.ToJsonString())!.AsObject();Check(FocusGate.Active(restored),"focus survives restart");
+ restored["places"]!["result:task1"]!["status"]="finished";FocusGate.Hold(restored,"Saved output","task1");
+ Check(restored["places"]!["result:task1"]!["status"]!.ToString()=="finished","dismissed result never resurrected");
+ Check(!FocusGate.MayRun("tool_call",new(){["tool"]="fs_write"}),"writes wait while focused");
+ Check(FocusGate.MayRun("tool_call",new(){["tool"]="fs_read"}),"reads can finish silently");
+ Check(!FocusGate.MayRun("open_app",new()),"apps never steal focus");
  }finally{Directory.Delete(root,true);}}
 }

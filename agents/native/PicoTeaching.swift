@@ -88,7 +88,7 @@ extension CompanionPanels {
         let w = placesWindow ?? panel("Parked Places",width:460,height:400);placesWindow = w
         var views:[NSView] = [label("Parked Places",size:17,bold:true)]
         if rows.isEmpty {views.append(label("No waiting or parked Places."))}
-        for row in rows.prefix(8) {
+        for row in rows {
             let b = button(row["sentence"] as? String ?? "Saved place",#selector(openSavedPlace(_:)));b.identifier = NSUserInterfaceItemIdentifier(row["id"] as? String ?? "");views.append(b)
             views.append(label("\(row["app"] as? String ?? "") · \(row["status"] as? String ?? "")",size:12))
         }

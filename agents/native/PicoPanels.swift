@@ -203,6 +203,16 @@ final class CompanionPanels: NSObject {
         let sentence = label(value["sentence"] as? String ?? "",size:15)
         let head = label(value["head_start"] as? String ?? "Your place is ready.",size:13);head.textColor = .secondaryLabelColor
         let text = stack([sentence,head],spacing:12)
+        if let path = value["snapshot"] as? String {
+            let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/PICO Places").resolvingSymlinksInPath().path + "/"
+            let url = URL(fileURLWithPath:path).resolvingSymlinksInPath()
+            if url.path.hasPrefix(root), let image = NSImage(contentsOf:url) {
+                let preview = NSImageView();preview.image = image;preview.imageScaling = .scaleProportionallyUpOrDown
+                preview.heightAnchor.constraint(equalToConstant:180).isActive = true;text.addArrangedSubview(preview)
+                preview.widthAnchor.constraint(equalTo:text.widthAnchor).isActive = true
+                window.setContentSize(NSSize(width:520,height:440))
+            }
+        }
         let scroll = NSScrollView();scroll.drawsBackground = false;scroll.contentView = TopAlignedClipView();scroll.autohidesScrollers = true;scroll.hasVerticalScroller = true;scroll.documentView = text
         text.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo:scroll.contentView.leadingAnchor),text.trailingAnchor.constraint(equalTo:scroll.contentView.trailingAnchor),text.topAnchor.constraint(equalTo:scroll.contentView.topAnchor),text.widthAnchor.constraint(equalTo:scroll.contentView.widthAnchor)])
