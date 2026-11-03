@@ -34,6 +34,15 @@ class ServiceTests(unittest.TestCase):
         search=self.db.db('tasks',body={'user_id':self.owner,'device_id':self.device['id'],'kind':'find_document','input':{},'status':'awaiting_approval','result':{'candidates':[candidate]}},method='POST')[0]
         return self.service.create_task(self.owner,self.device['id'],'','send_file',{'search_task_id':search['id'],'candidate_id':candidate['candidate_id']})
 
+    def test_unpair_is_idempotent_and_owner_scoped(self):
+        first=self.service.revoke(self.owner,self.device['id'])
+        second=self.service.revoke(self.owner,self.device['id'])
+        self.assertEqual(first,{'ok':True});self.assertEqual(second,first)
+        self.assertEqual(self.service.devices(self.owner),[])
+        with self.assertRaises(ApiError) as error:
+            self.service.revoke('another-owner',self.device['id'])
+        self.assertEqual(error.exception.status,404)
+
     def test_user_needs_token(self):
         with self.assertRaises(ApiError) as ctx:
             self.service.user('')

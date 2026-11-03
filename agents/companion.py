@@ -13,7 +13,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk, ImageSequence
-from client import DeviceClient,DeviceError
+from client import DeviceClient,DeviceError,connection_error
 from head_start import prepare
 from focus_gate import hold_result, may_run_focused
 from capture_policy import private_context, NEVER_SNAPSHOT
@@ -28,6 +28,12 @@ class Companion:
         self.platform=platform;self.base=base;self.directory=Path(directory)
         self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
         self.config=self.directory/'connection.json';self.state_file=self.directory/'places.json'
+        if os.environ.get('PICO_CONNECTION_DIAGNOSTICS')=='1':
+            import logging
+            path=self.directory/'connection-diagnostics.log'
+            path.touch(mode=0o600,exist_ok=True);os.chmod(path,0o600)
+            logger=logging.getLogger('pico.connection');logger.addHandler(logging.FileHandler(path));logger.setLevel(logging.INFO);logger.propagate=False
+            logger.info('Companion starting')
         self.lock=threading.RLock();self.events=queue.Queue();self.stopped=threading.Event();self.acks=[]
         self.state={'places':{},'allowed_apps':[],'grants':[],'task_journal':{},'handled':[],'outgoing':[],'character':'tuck','size':'medium','idle_minutes':1,'focused':False,'snapshots':False,'excluded_apps':[],'notice_idle':True,'prepare':False,'share_snapshot':False,'reopen':True,'retention_days':7,'paused_until':0}
         if self.state_file.exists():
@@ -134,8 +140,8 @@ class Companion:
             try:
                 client=DeviceClient(self.base);client.claim(code,self.platform.OS,socket.gethostname());client.save(self.config)
                 self.events.put(('native_paired',client))
-            except Exception:
-                self.events.put(('native_pair_error','Could not connect. Get a fresh code and try again.'))
+            except Exception as error:
+                self.events.put(('native_pair_error',connection_error(error)))
         threading.Thread(target=work,daemon=True).start()
 
     def pairing(self):
@@ -179,6 +185,7 @@ class Companion:
             try:
                 self.refresh_grants()
                 client=self.client
+                __import__('logging').getLogger('pico.connection').info('Heartbeat request')
                 result=client.post('/agent/poll',{'capabilities':__import__('task_execution').capabilities(self.state)})
                 for message in result['mail']:self.events.put(('mail',message))
                 with self.lock:
@@ -195,8 +202,10 @@ class Companion:
                     except ValueError:pass
 
             except PermissionError:
+                __import__('logging').getLogger('pico.connection').info('Revoked response received')
                 self.events.put(('revoked',None));return
-            except Exception:
+            except Exception as error:
+                __import__('logging').getLogger('pico.connection').info('Heartbeat failure: %s; file=%s; frames=%s',type(error).__name__,Path(str(getattr(error,'filename',''))).name,[(Path(f.filename).name,f.name,f.lineno) for f in __import__('traceback').extract_tb(error.__traceback__)])
                 pass  # Local Places remain available through a network outage.
             self.stopped.wait(1)
 
@@ -520,8 +529,11 @@ class Companion:
         if not self.overlay and not messagebox.askyesno('Unpair Pico','Disconnect this computer from your phone?',parent=self.root):return
         client=self.client
         def work():
-            try:client.post('/agent/revoke',{});self.events.put(('revoked',None))
-            except Exception:self.events.put(('notice','Could not unpair. Check your connection.'))
+            try:client.post('/agent/revoke',{})
+            except PermissionError:pass  # Revoked elsewhere is already disconnected.
+            except Exception as error:
+                self.events.put(('notice',connection_error(error)));return
+            self.events.put(('revoked',None))
         threading.Thread(target=work,daemon=True).start()
 
     def process_events(self):

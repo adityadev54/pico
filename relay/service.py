@@ -245,8 +245,11 @@ class PicoService:
         return {'ok': True}
 
     def revoke(self, owner, id):
-        self.owned(owner, id)
-        self.db.db('devices', {'id': 'eq.'+id, 'user_id': 'eq.'+owner}, {'revoked_at': stamp()}, 'PATCH')
+        id = identifier(id)
+        rows = self.db.db('devices', {'id': 'eq.'+id, 'user_id': 'eq.'+owner, 'name': 'like.Pico · *'})
+        if not rows:raise ApiError(404, 'Computer not found. Connect it again.')
+        if not rows[0].get('revoked_at'):
+            self.db.db('devices', {'id': 'eq.'+id, 'user_id': 'eq.'+owner}, {'revoked_at': stamp()}, 'PATCH')
         for phone in (False, True):
             while True:
                 messages = self.mail.list(owner, id, phone)

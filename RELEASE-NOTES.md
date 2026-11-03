@@ -1,3 +1,10 @@
+## Mac 0.8.4 (24)
+
+- Avoid unsafe macOS system proxy discovery in the packaged Python networking client; explicit proxy environment settings remain supported.
+- Show server pairing errors instead of always suggesting an expired code.
+- Unpair cleanly when the phone has already revoked the computer; repeated phone-side unpair requests are owner-scoped and idempotent.
+- Include the runtime’s CA policy file in the Mac app so HTTPS initialization works after packaging.
+
 ## Mac 0.8.3 (23) / Windows 0.8.7
 
 - Persistent focus gate: silent result cards wait in Places until you finish; interrupting incoming actions stay queued.

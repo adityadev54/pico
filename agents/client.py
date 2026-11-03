@@ -1,10 +1,31 @@
 """Device-only client. No account login or Supabase service key on the computer."""
 import json
 import os
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+def open_request(request, timeout):
+    if sys.platform == 'darwin':
+        # The macOS system proxy lookup calls CoreFoundation, which is unsafe
+        # in a frozen/forked app. Preserve explicit proxy environment settings.
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler(urllib.request.getproxies_environment()))
+        return opener.open(request, timeout=timeout)
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
+def connection_error(error):
+    if isinstance(error, PermissionError):
+        return 'This connection is no longer valid. Get a new code on your phone.'
+    if isinstance(error, DeviceError):
+        return str(error)[:200]
+    if isinstance(error, (urllib.error.URLError, TimeoutError, OSError)):
+        return 'Could not reach Pico. Check your internet connection and try again.'
+    return 'Pico could not finish connecting. Please try again.'
+
 
 class DeviceError(ValueError):
     def __init__(self,message,status):
@@ -20,7 +41,7 @@ class DeviceClient:
     def post(self, path, value):
         req = urllib.request.Request(self.base+path, data=json.dumps(value).encode(), headers={'Content-Type':'application/json','Authorization':'Bearer '+self.token})
         try:
-            with urllib.request.urlopen(req, timeout=55 if path=='/agent/skills/model' else 20) as response:
+            with open_request(req, timeout=55 if path=='/agent/skills/model' else 20) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
             if error.code == 401:
