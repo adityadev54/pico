@@ -18,7 +18,9 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 
 - **Focus gate:** choose “I’m focused” from the companion menu; results wait in Places until “I’m done.” App-opening and reviewed actions wait too.
 - **Hold your place:** save and park unfinished work, then return to it on your computer.
-- **Reach your computer:** find files, transfer a selected document, and open approved apps or websites.
+- **Reach your computer:** find and inspect files, transfer a selected document, and open approved apps or websites.
+- **Work with files:** create or revise files, convert supported formats, merge/split/rotate/watermark PDFs, and create or extract ZIP archives. Reviewed trash and restore require the appropriate folder access.
+- **Capture from your phone:** use the composer’s + menu for microphone input or a camera photo; approved photos save to your computer’s write folder.
 - **Watch & repeat:** show Pico an example result, then run the learned routine from your phone.
 - **Stay in control:** explicit folder permissions, reviewed changes and source-checked AI output.
 
@@ -39,6 +41,20 @@ Basic file/app commands, transfers, parking, camera capture and companion moods 
 Install Pico on your [phone and computer](https://pico-companion.fly.dev/setup#setup), sign in on the phone, and enter its six-digit pairing code on the computer. Choose the apps and folders Pico may access, then try **“Find my lecture notes.”**
 
 **Platforms:** Android APK · iPhone Safari web app · Apple silicon Mac, macOS 13+ · Windows 10/11 x64.
+
+## File actions
+
+Conversions run locally on your computer, without Muse:
+
+| Input | Output |
+| --- | --- |
+| Images | PDF, PNG, JPEG or WebP |
+| Text-based PDF | TXT or DOCX (text only; layout is not preserved) |
+| DOCX | PDF; requires LibreOffice installed on the computer |
+
+Use an approved **write folder**, keep the companion connected, then ask naturally—for example, **“Convert lecture.docx to PDF.”** Review the action when prompted. Results save beside the source; conversion preserves originals and uses a numbered filename if the output already exists.
+
+Conversion inputs and outputs are limited to **1 MB**. PDF operations support up to **100 pages**; scanned PDFs need OCR, which is not included. For setup, more examples and dependencies, see [file actions](docs/file-actions.md).
 
 ## Architecture
 
@@ -68,6 +84,7 @@ Requires Flutter and the target platform SDK. Desktop development also uses Pyth
 
 ## Documentation
 
+- [File actions and requirements](docs/file-actions.md)
 - [Teach and repeat a routine](docs/watch-and-repeat.md)
 - [Build and release](docs/runbook.md)
 - [Security and permissions](docs/security.md)
