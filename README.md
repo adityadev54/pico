@@ -14,6 +14,10 @@
 
 Pico pairs a phone conversation with a small desktop companion. Save your next step, work with approved files and apps, or teach a document routine once and repeat it on fresh inputs.
 
+## Demo
+
+[Watch Pico in action](docs/media/pico-demo.mp4) — a walkthrough of the phone and desktop companion.
+
 ## What it does
 
 - **Focus gate:** choose “I’m focused” from the companion menu; results wait in Places until “I’m done.” App-opening and reviewed actions wait too.
