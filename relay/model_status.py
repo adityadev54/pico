@@ -1,6 +1,6 @@
 """Nonbillable provider reachability, cached for one minute. Never returns keys."""
 import json,os,time,threading,urllib.request
-from .model_access import require_model_owner
+from .model_access import require_model_owner, is_trial
 from .model_budget import BudgetDenied
 _cache={};_lock=threading.Lock()
 def status(owner):
@@ -20,4 +20,11 @@ def status(owner):
    except Exception:ready=False
    _cache.update(at=time.time(),ready=ready)
   ready=_cache['ready']
+ if is_trial(owner):
+  from .model_budget import ModelBudget
+  path=os.environ.get('PICO_TRIAL_LEDGER','')
+  if not path or not os.path.isabs(path):return {'state':'unavailable','label':'Muse trial is not configured'}
+  remaining,available=ModelBudget(path,trial=True).remaining(owner)
+  if not remaining or not available:return {'state':'limited','label':'Muse trial used up; local features still work','remaining':remaining}
+  return {'state':'ready' if ready else 'unavailable','label':f'Muse trial · {remaining} of 5 requests remaining' if ready else 'Muse unavailable','remaining':remaining}
  return {'state':'ready' if ready else 'unavailable','label':'Muse connected' if ready else 'Muse unavailable','checked_at':int(_cache['at']),'billable_check':False}

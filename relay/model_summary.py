@@ -4,7 +4,7 @@ from .service import ApiError,identifier
 from .model_access import require_model_owner
 from .model_budget import BudgetDenied
 from server.config import muse_config
-from server.model_safety import authorize
+from server.model_safety import authorize, finish
 def summarize(service,owner,body):
  try:require_model_owner(owner)
  except BudgetDenied as error:raise ApiError(403,str(error)) from None
@@ -20,6 +20,7 @@ def summarize(service,owner,body):
  try:
   with urllib.request.urlopen(req,timeout=12) as response:answer=json.load(response)['choices'][0]['message']['content']
  except Exception:raise ApiError(503,'Muse could not finish this summary. No automatic retry.') from None
+ finally:finish(req)
  if not isinstance(answer,str) or not answer.strip():raise ApiError(503,'Muse returned no summary.')
  service.db.db('tasks',{'id':'eq.'+task['id']},{'result':{**result,'summary':answer[:3000]}},'PATCH')
  return {'summary':answer[:3000]}

@@ -15,7 +15,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
-from server.model_safety import authorize
+from server.model_safety import authorize, finish
 from relay.model_budget import BudgetDenied
 
 
@@ -109,6 +109,8 @@ def plan(task: dict, tools: list[dict], cfg: dict) -> dict:
         raw_text = str(payload["choices"][0]["message"]["content"]).strip()
     except Exception as exc:
         return {"error": f"Model call failed: {type(exc).__name__}"}
+    finally:
+        finish(request)
 
     try:
         parsed = json.loads(raw_text)

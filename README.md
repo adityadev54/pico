@@ -30,6 +30,12 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 - **Watch & repeat:** show Pico an example result, then run the learned routine from your phone.
 - **Stay in control:** explicit folder permissions, reviewed changes and source-checked AI output.
 
+## Important: trying Muse
+
+Verified, signed-in accounts receive a **one-time trial of five Muse requests**, shared across learning routines, running routines, summaries and AI action planning. No personal API key is needed on the hosted service. One request can run at a time per account; allow one minute between requests. Each provider attempt counts, including failed attempts; retries are your choice.
+
+The public trial has a separate **$5 shared reservation allowance** across all trial accounts, so availability can end before an individual uses all five requests. This is a conservative application budget, not a guarantee of the provider’s final bill. Check Muse status in settings for remaining requests. Basic local features remain available after the trial; connected actions still require the relay. Keys stay on the server. Self-hosting configuration is in the [developer guide](docs/development.md).
+
 ## Where Muse works
 
 Muse runs on the authenticated server, not inside the phone or desktop app:
