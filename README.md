@@ -30,15 +30,19 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 - **Watch & repeat:** show Pico an example result, then run the learned routine from your phone.
 - **Stay in control:** explicit folder permissions, reviewed changes and source-checked AI output.
 
-## Important: trying Muse
+## Try Muse
 
-Verified, signed-in accounts receive a **one-time trial of five Muse requests**, shared across learning routines, running routines, summaries and AI action planning. No personal API key is needed on the hosted service. One request can run at a time per account; allow one minute between requests. Each provider attempt counts, including failed attempts; retries are your choice.
+Sign in and verify your email to try Pico’s AI features.
 
-The public trial has a separate **$5 shared reservation allowance** across all trial accounts, so availability can end before an individual uses all five requests. This is a conservative application budget, not a guarantee of the provider’s final bill. Check Muse status in settings for remaining requests. Basic local features remain available after the trial; connected actions still require the relay. Keys stay on the server. Self-hosting configuration is in the [developer guide](docs/development.md).
+- **Five requests per account**, shared across routines, summaries and AI-assisted actions.
+- **One request at a time**, with a one-minute pause between requests.
+- Check **Muse in Settings** for your remaining requests. Unsuccessful attempts also count.
+
+Demo availability is limited. File tools, parking and other non-AI features remain available after the trial. Keep your companion connected for computer actions.
 
 ## Where Muse works
 
-Muse runs on the authenticated server, not inside the phone or desktop app:
+Muse helps Pico understand and prepare work in these flows:
 
 | Flow | Muse’s role |
 | --- | --- |
@@ -46,7 +50,7 @@ Muse runs on the authenticated server, not inside the phone or desktop app:
 | AI computer request | `Ask Pico: …` plans one supported action or asks for clarification. Local permissions and review still apply. |
 | Summarize with Muse | Summarizes the selected, already-read document excerpt—not the entire computer. |
 
-Basic file/app commands, transfers, parking, camera capture and companion moods do not call Muse. Voice input uses the platform speech service. Step-away previews do not currently generate Muse guesses. Connected actions still need the relay; Muse requests additionally need account access and available budget. Failed model calls are not automatically retried.
+File and app commands, transfers, parking, camera capture and companion moods work without Muse. Voice input uses your device’s speech service. Step-away previews do not currently generate AI guesses. You choose whether to retry an unsuccessful AI request.
 
 ## Get started
 
@@ -81,7 +85,7 @@ flowchart LR
     Relay -->|Server-side model call| Muse[Muse backend]
 ```
 
-Built with Flutter, native Swift/C# desktop controls, a shared Python workflow engine and Supabase. The desktop enforces permissions; model output cannot bypass them. Service credentials stay server-side.
+Built with Flutter, native Swift/C# desktop controls, a shared Python workflow engine and Supabase. The desktop enforces permissions; model output cannot bypass them.
 
 ## Develop
 
