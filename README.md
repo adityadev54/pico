@@ -16,7 +16,7 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 
 ## Demo
 
-https://github.com/user-attachments/assets/5bc0a302-77ac-429e-930f-a0b0569af992
+[Watch the public Pico demo](https://pico-companion.fly.dev/demo.html)
 
 [Download the original video](docs/media/pico-demo.mp4).
 
