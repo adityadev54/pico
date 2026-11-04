@@ -16,7 +16,9 @@ Pico pairs a phone conversation with a small desktop companion. Save your next s
 
 ## Demo
 
-[Watch Pico in action](docs/media/pico-demo.mp4) — a walkthrough of the phone and desktop companion.
+https://github.com/user-attachments/assets/5bc0a302-77ac-429e-930f-a0b0569af992
+
+[Download the original video](docs/media/pico-demo.mp4).
 
 ## What it does
 
